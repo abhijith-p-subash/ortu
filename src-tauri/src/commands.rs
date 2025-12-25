@@ -26,6 +26,36 @@ pub fn set_category(app: AppHandle, id: i64, category: String) -> Result<(), Str
 }
 
 #[tauri::command]
+pub fn create_group(app: AppHandle, name: String) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    db.create_group(name).map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_group(app: AppHandle, name: String) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    db.delete_group(name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn rename_group(app: AppHandle, old_name: String, new_name: String) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    db.rename_group(old_name, new_name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn export_group(app: AppHandle, name: String, path: String) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    db.export_group(name, std::path::PathBuf::from(path)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn import_group(app: AppHandle, name: String, path: String) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    db.import_group(name, std::path::PathBuf::from(path)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn get_categories(app: AppHandle) -> Result<Vec<String>, String> {
     let db = app.state::<ClipboardDB>();
     db.get_categories().map_err(|e| e.to_string())
@@ -53,8 +83,9 @@ pub fn manual_cleanup(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn close_window(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
+pub fn close_window(app: AppHandle, label: Option<String>) -> Result<(), String> {
+    let target = label.unwrap_or_else(|| "popup".to_string());
+    if let Some(window) = app.get_webview_window(&target) {
         window.hide().map_err(|e| e.to_string())?;
     }
     Ok(())

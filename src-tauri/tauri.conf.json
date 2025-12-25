@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ortto",
+  "productName": "ortu",
   "version": "0.1.0",
-  "identifier": "com.ortto.app",
+  "identifier": "com.ortu.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,15 +12,27 @@
   "app": {
     "windows": [
       {
-        "title": "ortto",
-        "width": 600,
-        "height": 400,
+        "title": "Ortu Manager",
+        "label": "main",
+        "width": 1000,
+        "height": 700,
+        "resizable": true,
+        "decorations": true,
+        "transparent": false,
+        "visible": false,
+        "center": true
+      },
+      {
+        "title": "Ortu Quick Access",
+        "label": "popup",
+        "url": "/popup",
+        "width": 550,
+        "height": 450,
         "resizable": false,
         "decorations": false,
         "transparent": true,
-        "alwaysOnTop": true,
         "visible": false,
-        "center": true,
+        "alwaysOnTop": true,
         "skipTaskbar": true,
         "visibleOnAllWorkspaces": true,
         "focus": true

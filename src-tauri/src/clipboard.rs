@@ -1,4 +1,5 @@
 use tauri::Manager;
+use tauri::Emitter;
 use tauri::AppHandle;
 use std::thread;
 use std::time::Duration;
@@ -161,7 +162,7 @@ let github_actions_re = Regex::new(r"(?m)^\s*(uses:|runs-on:|steps:)").unwrap();
 };
 
 
-                        // Access DB state
+                         // Access DB state
                         if let Some(db) = app.try_state::<ClipboardDB>() {
                              // If no regex match, try similarity match
                              if category.is_none() {
@@ -170,8 +171,13 @@ let github_actions_re = Regex::new(r"(?m)^\s*(uses:|runs-on:|steps:)").unwrap();
                                  }
                              }
 
-                             if let Err(e) = db.insert_item(text.clone(), category) {
-                                 eprintln!("Failed to save clipboard item: {}", e);
+                             println!("📋 Saving clipboard: {} chars, category: {:?}", text.len(), category);
+                             if let Err(e) = db.insert_item(text.clone(), category.clone()) {
+                                 eprintln!("❌ Failed to save clipboard item: {}", e);
+                             } else {
+                                 println!("✅ Clipboard saved successfully!");
+                                 // Emit event to notify frontend of new clipboard item
+                                 let _ = app.emit("clipboard-updated", ());
                              }
                         }
 
