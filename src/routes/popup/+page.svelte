@@ -280,8 +280,6 @@
         tabindex="0"
         data-index={idx}
       >
-        data-index={idx}
-        >
         <div class="flex items-center space-x-3 min-w-0 flex-1">
           <!-- Icon Indicator -->
           <div
