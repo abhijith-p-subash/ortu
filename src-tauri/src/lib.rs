@@ -1,20 +1,20 @@
 #![allow(unexpected_cfgs)]
-mod db;
 mod clipboard;
 mod commands;
+mod db;
 
 use db::ClipboardDB;
-use tauri::Manager;
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::TrayIconBuilder;
-use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState, Shortcut};
 use std::thread;
 use std::time::Duration;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
+use tauri::Manager;
+use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 
 #[cfg(target_os = "macos")]
-use cocoa::appkit::{NSApp};
+use cocoa::appkit::NSApp;
 #[cfg(target_os = "macos")]
-use cocoa::base::{id, YES, nil};
+use cocoa::base::{id, nil, YES};
 #[cfg(target_os = "macos")]
 use objc::{msg_send, sel, sel_impl};
 
@@ -42,7 +42,7 @@ pub fn run() {
                             let _ = window.show();
                             let _ = window.set_focus();
                         }
-                    },
+                    }
                     _ => {}
                 })
                 .build(app)?;
@@ -126,7 +126,9 @@ pub fn run() {
             commands::import_group,
             commands::paste_item,
             commands::manual_cleanup,
-            commands::close_window
+            commands::close_window,
+            commands::backup_data,
+            commands::restore_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri app");
@@ -149,7 +151,7 @@ fn setup_mac_popup(window: &tauri::WebviewWindow) {
         if let Ok(handle) = w.ns_window() {
             let ns_window = handle as id;
             unsafe {
-                let style_mask: i32 = 0 | 8 | 128 | 128; 
+                let style_mask: i32 = 0 | 8 | 128 | 128;
                 let _: () = msg_send![ns_window, setStyleMask: style_mask];
                 let _: () = msg_send![ns_window, setTitleVisibility: 1];
                 let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
@@ -165,7 +167,7 @@ fn setup_mac_popup(window: &tauri::WebviewWindow) {
 fn show_popup(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("popup") {
         let w = window.clone();
-        
+
         #[cfg(target_os = "macos")]
         {
             let _ = app.run_on_main_thread(move || {

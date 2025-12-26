@@ -1,5 +1,5 @@
-use tauri::{AppHandle, Manager};
 use crate::db::{ClipboardDB, ClipboardItem};
+use tauri::{AppHandle, Manager};
 
 #[tauri::command]
 pub fn get_history(app: AppHandle, search: Option<String>) -> Result<Vec<ClipboardItem>, String> {
@@ -40,19 +40,36 @@ pub fn delete_group(app: AppHandle, name: String) -> Result<(), String> {
 #[tauri::command]
 pub fn rename_group(app: AppHandle, old_name: String, new_name: String) -> Result<(), String> {
     let db = app.state::<ClipboardDB>();
-    db.rename_group(old_name, new_name).map_err(|e| e.to_string())
+    db.rename_group(old_name, new_name)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn export_group(app: AppHandle, name: String, path: String) -> Result<(), String> {
     let db = app.state::<ClipboardDB>();
-    db.export_group(name, std::path::PathBuf::from(path)).map_err(|e| e.to_string())
+    db.export_group(name, std::path::PathBuf::from(path))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn import_group(app: AppHandle, name: String, path: String) -> Result<(), String> {
     let db = app.state::<ClipboardDB>();
-    db.import_group(name, std::path::PathBuf::from(path)).map_err(|e| e.to_string())
+    db.import_group(name, std::path::PathBuf::from(path))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn backup_data(app: AppHandle, path: String) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    let json = db.get_all_data_json().map_err(|e| e.to_string())?;
+    std::fs::write(path, json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn restore_data(app: AppHandle, path: String) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    db.restore_from_json(&json).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

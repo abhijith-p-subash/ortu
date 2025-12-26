@@ -16,6 +16,20 @@ pub struct ClipboardItem {
     pub created_at: String,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct Group {
+    pub id: i64,
+    pub name: String,
+    pub is_system: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct BackupData {
+    pub history: Vec<ClipboardItem>,
+    pub groups: Vec<Group>,
+    pub exported_at: String,
+}
+
 impl ClipboardDB {
     pub fn new(app_handle: &AppHandle) -> Result<Self> {
         let app_dir = app_handle
@@ -151,29 +165,35 @@ impl ClipboardDB {
         let mut rows;
 
         if let Some(s) = search {
-            if s.starts_with("category:") {
+            if s.starts_with("group:") {
+                let parts: Vec<&str> = s.splitn(2, ' ').collect();
+                let group_name = parts[0].replace("group:", "");
+                let search_term = if parts.len() > 1 { parts[1] } else { "" };
+                let search_pattern = format!("%{}%", search_term);
+
+                let where_clause = match group_name.as_str() {
+                    "Dev" => "category IN ('Docker', 'Kubernetes', 'IaC', 'Cloud CLI', 'Shell / OS', 'CI / Build')",
+                    "Code" => "category IN ('Version Control', 'Package Management', 'Runtime / Build', 'Database')",
+                    "URL" => "category = 'URL'",
+                    "Images" => "content_type = 'image'",
+                    "Text" => "content_type = 'text'",
+                    _ => "1=0" // Unknown group returns nothing
+                };
+
+                let sql = format!(
+                    "SELECT id, content_type, raw_content, category, is_permanent, created_at 
+                     FROM history 
+                     WHERE ({}) AND raw_content LIKE ?1
+                     ORDER BY is_permanent DESC, created_at DESC 
+                     LIMIT 100",
+                    where_clause
+                );
+
+                stmt = conn.prepare(&sql)?;
+                rows = stmt.query(params![search_pattern])?;
+            } else if s.starts_with("category:") {
                 // Format is "category:GroupName Optional Search"
-                // We need to be careful as GroupName can have spaces.
-                // We'll look for a space after "category:", but we should probably
-                // treat the first part carefully.
-                // Actually, a simpler way: find the category name by matching existing groups.
-
-                let remainder = &s["category:".len()..];
-                let _cat_name = remainder.to_string();
-                let _search_part = String::new();
-
-                // Optimization: Try to find a split point that matches a known category
-                // But for now, let's just use the logic from the main window
-                // and improve it.
-
-                if let Some(_first_space) = remainder.find(' ') {
-                    // This is still ambiguous if category has spaces.
-                    // But if we use a special separator in the future it would be better.
-                    // For now, let's try to match the whole remainder first,
-                    // then try splitting if that fails.
-                }
-
-                // Fallback to simple split for now but with better limit handle
+                // Fallback to simple split for now
                 let parts: Vec<&str> = s.splitn(2, ' ').collect();
                 let cat_part = parts[0].replace("category:", "");
                 let search_part_val = if parts.len() > 1 { parts[1] } else { "" };
@@ -299,5 +319,89 @@ impl ClipboardDB {
             categories.push(cat?);
         }
         Ok(categories)
+    }
+
+    // --- Backup & Restore ---
+
+    pub fn get_all_data_json(&self) -> Result<String> {
+        let conn = self.conn.lock().unwrap();
+
+        // Get all history
+        let mut stmt = conn.prepare(
+            "SELECT id, content_type, raw_content, category, is_permanent, created_at FROM history",
+        )?;
+        let history_iter = stmt.query_map([], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                content_type: row.get(1)?,
+                raw_content: row.get(2)?,
+                category: row.get(3)?,
+                is_permanent: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })?;
+        let history: Vec<ClipboardItem> = history_iter.collect::<Result<_, _>>()?;
+
+        // Get all groups
+        let mut stmt = conn.prepare("SELECT id, name, is_system FROM groups")?;
+        let groups_iter = stmt.query_map([], |row| {
+            Ok(Group {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                is_system: row.get(2)?,
+            })
+        })?;
+        let groups: Vec<Group> = groups_iter.collect::<Result<_, _>>()?;
+
+        let backup = BackupData {
+            history,
+            groups,
+            exported_at: chrono::Local::now().to_rfc3339(),
+        };
+
+        serde_json::to_string_pretty(&backup)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
+    }
+
+    pub fn restore_from_json(&self, json_content: &str) -> Result<()> {
+        let backup: BackupData = serde_json::from_str(json_content)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        // Clear existing data
+        tx.execute("DELETE FROM history", [])?;
+        tx.execute("DELETE FROM groups", [])?;
+
+        // Restore groups
+        {
+            let mut stmt =
+                tx.prepare("INSERT INTO groups (id, name, is_system) VALUES (?1, ?2, ?3)")?;
+            for group in backup.groups {
+                stmt.execute(params![group.id, group.name, group.is_system])?;
+            }
+        }
+
+        // Restore history
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO history (id, content_type, raw_content, category, is_permanent, created_at) 
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+            )?;
+            for item in backup.history {
+                stmt.execute(params![
+                    item.id,
+                    item.content_type,
+                    item.raw_content,
+                    item.category,
+                    item.is_permanent,
+                    item.created_at
+                ])?;
+            }
+        }
+
+        tx.commit()?;
+        Ok(())
     }
 }

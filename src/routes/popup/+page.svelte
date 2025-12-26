@@ -137,25 +137,30 @@
 
     // This is the important part
     const setupListeners = async () => {
-      // 1. Handle window focus (auto-reset)
-      const unFocus = await listen("tauri://focus", () => {
-        currentCategory = null;
-        searchQuery = "";
-        selectedIndex = 0;
-        loadData(); // Force reload when window pops up
-        tick().then(() => searchInput?.focus());
-      });
+      try {
+        // 1. Handle window focus (auto-reset)
+        const unFocus = await listen("tauri://focus", () => {
+          currentCategory = null;
+          searchQuery = "";
+          selectedIndex = 0;
+          loadData(); // Force reload when window pops up
+          tick().then(() => searchInput?.focus());
+        });
 
-      // 2. Handle real-time updates while window is ALREADY open
-      const unClipboard = await listen("clipboard-updated", async () => {
-        console.log("Clipboard event received!"); // Check your console!
-        await loadData(); // Manually trigger the fetch
-      });
+        // 2. Handle real-time updates while window is ALREADY open
+        const unClipboard = await listen("clipboard-updated", async () => {
+          console.log("Clipboard event received!"); // Check your console!
+          await loadData(); // Manually trigger the fetch
+        });
 
-      return () => {
-        unFocus();
-        unClipboard();
-      };
+        return () => {
+          unFocus();
+          unClipboard();
+        };
+      } catch (err) {
+        console.error("Failed to setup listeners:", err);
+        return () => {};
+      }
     };
 
     const cleanup = setupListeners();
@@ -165,6 +170,41 @@
       cleanup.then((c) => c());
     };
   });
+
+  function getCategoryIcon(category: string | null): string {
+    if (!category)
+      return '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline>'; // FileText
+
+    const c = category.toLowerCase();
+
+    if (c === "url")
+      return '<circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>'; // Globe
+
+    if (
+      c.includes("docker") ||
+      c.includes("shell") ||
+      c.includes("kubernetes") ||
+      c.includes("cloud") ||
+      c.includes("terminal")
+    )
+      return '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>'; // Terminal
+
+    if (c.includes("git") || c.includes("version"))
+      return '<line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>'; // Git Branch
+
+    if (c.includes("database") || c.includes("sql"))
+      return '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>'; // Database
+
+    if (
+      c.includes("code") ||
+      c.includes("runtime") ||
+      c.includes("package") ||
+      c.includes("ci")
+    )
+      return '<polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>'; // Code
+
+    return '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line>'; // Tag
+  }
 </script>
 
 <div
@@ -240,11 +280,29 @@
         tabindex="0"
         data-index={idx}
       >
+        data-index={idx}
+        >
         <div class="flex items-center space-x-3 min-w-0 flex-1">
-          <span class="text-[10px] text-zinc-600 font-bold w-4 text-center"
-            >{idx < 9 ? idx + 1 : ""}</span
+          <!-- Icon Indicator -->
+          <div
+            class="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded bg-[#2a2a2a] text-zinc-500"
           >
-          <p class="text-[13px] truncate font-normal leading-tight">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              {@html getCategoryIcon(item.category)}
+            </svg>
+          </div>
+
+          <p class="text-[13px] truncate font-normal leading-tight flex-1">
             {item.raw_content.replace(/\s+/g, " ")}
           </p>
         </div>

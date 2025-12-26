@@ -18,11 +18,20 @@
   let newGroupName = $state("");
   let editingGroup = $state<string | null>(null);
   let editGroupName = $state("");
+  let draggedItemId = $state<number | null>(null);
 
   async function loadHistory() {
     try {
+      let prefix = "category:";
+      // Check if it's a known smart group
+      if (
+        ["Dev", "Code", "URL", "Images", "Text"].includes(selectedGroup || "")
+      ) {
+        prefix = "group:";
+      }
+
       const search = selectedGroup
-        ? `category:${selectedGroup} ${searchQuery}`
+        ? `${prefix}${selectedGroup} ${searchQuery}`
         : searchQuery;
       const data = (await invoke("get_history", {
         search: search || null,
@@ -123,6 +132,46 @@
     }
   }
 
+  async function backupData() {
+    try {
+      const path = await save({
+        filters: [{ name: "JSON", extensions: ["json"] }],
+        defaultPath: `ortu_backup_${new Date().toISOString().split("T")[0]}.json`,
+      });
+      if (path) {
+        await invoke("backup_data", { path });
+        alert("Backup successful!");
+      }
+    } catch (e) {
+      console.error("Failed to backup data:", e);
+      alert("Failed to backup data: " + e);
+    }
+  }
+
+  async function restoreData() {
+    if (
+      !confirm(
+        "WARNING: Restore will overwrite ALL current history and groups. Continue?"
+      )
+    )
+      return;
+
+    try {
+      const path = await open({
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (path && typeof path === "string") {
+        await invoke("restore_data", { path });
+        await loadGroups();
+        await loadHistory();
+        alert("Restore successful!");
+      }
+    } catch (e) {
+      console.error("Failed to restore data:", e);
+      alert("Failed to restore data: " + e);
+    }
+  }
+
   async function togglePermanent(item: ClipboardItem) {
     await invoke("toggle_permanent", { id: item.id });
     await loadHistory();
@@ -147,6 +196,34 @@
       await loadGroups();
     } catch (e) {
       console.error("Failed to move item to group:", e);
+    }
+  }
+
+  function handleDragStart(e: DragEvent, id: number) {
+    if (e.dataTransfer) {
+      e.dataTransfer.setData("text/plain", id.toString());
+      e.dataTransfer.effectAllowed = "move";
+      draggedItemId = id;
+    }
+  }
+
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "move";
+    }
+  }
+
+  async function handleDrop(e: DragEvent, targetGroup: string) {
+    e.preventDefault();
+    const idStr = e.dataTransfer?.getData("text/plain");
+    if (idStr) {
+      const id = parseInt(idStr);
+      if (!isNaN(id)) {
+        await invoke("set_category", { id, category: targetGroup });
+        await loadHistory();
+        draggedItemId = null;
+      }
     }
   }
 
@@ -227,28 +304,72 @@
     loadGroups();
     window.addEventListener("keydown", handleKeydown);
 
-    const unlistenFocus = listen("tauri://focus", async () => {
-      await loadHistory();
-      await loadGroups();
-      selectedIndex = 0;
-      await tick();
-      searchInput?.focus();
-    });
+    let unlistenFocus: () => void;
+    let unlistenClipboard: () => void;
 
-    const unlistenBlur = listen("tauri://blur", async () => {});
+    const setupListeners = async () => {
+      try {
+        const uFocus = await listen("tauri://focus", async () => {
+          await loadHistory();
+          await loadGroups();
+          selectedIndex = 0;
+          await tick();
+          searchInput?.focus();
+        });
+        unlistenFocus = uFocus;
 
-    // Listen for clipboard updates from the backend
-    const unlistenClipboard = listen("clipboard-updated", async () => {
-      await loadHistory();
-    });
+        const uClipboard = await listen("clipboard-updated", async () => {
+          await loadHistory();
+        });
+        unlistenClipboard = uClipboard;
+      } catch (e) {
+        console.error("Failed to setup main listeners:", e);
+      }
+    };
+
+    setupListeners();
 
     return () => {
       window.removeEventListener("keydown", handleKeydown);
-      unlistenFocus.then((f) => f());
-      unlistenBlur.then((f) => f());
-      unlistenClipboard.then((f) => f());
+      if (unlistenFocus) unlistenFocus();
+      if (unlistenClipboard) unlistenClipboard();
     };
   });
+
+  function getCategoryIcon(category: string | null): string {
+    if (!category)
+      return '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline>'; // FileText
+
+    const c = category.toLowerCase();
+
+    if (c === "url")
+      return '<circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>'; // Globe
+
+    if (
+      c.includes("docker") ||
+      c.includes("shell") ||
+      c.includes("kubernetes") ||
+      c.includes("cloud") ||
+      c.includes("terminal")
+    )
+      return '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>'; // Terminal
+
+    if (c.includes("git") || c.includes("version"))
+      return '<line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>'; // Git Branch
+
+    if (c.includes("database") || c.includes("sql"))
+      return '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>'; // Database
+
+    if (
+      c.includes("code") ||
+      c.includes("runtime") ||
+      c.includes("package") ||
+      c.includes("ci")
+    )
+      return '<polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>'; // Code
+
+    return '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line>'; // Tag
+  }
 </script>
 
 <div
@@ -288,8 +409,50 @@
     </div>
     <div class="flex items-center space-x-2">
       <button
+        onclick={backupData}
+        class="flex items-center space-x-2 px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] rounded-md border border-[#333] transition-all text-xs font-semibold"
+        title="Backup Full History"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          ><path
+            d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
+          ></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline
+            points="7 3 7 8 15 8"
+          ></polyline></svg
+        >
+        <span>Backup</span>
+      </button>
+      <button
+        onclick={restoreData}
+        class="flex items-center space-x-2 px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] rounded-md border border-[#333] transition-all text-xs font-semibold"
+        title="Restore Full History"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline
+            points="7 10 12 15 17 10"
+          ></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg
+        >
+        <span>Restore</span>
+      </button>
+      <div class="w-px h-4 bg-[#333] mx-1"></div>
+      <button
         onclick={importGroup}
         class="flex items-center space-x-2 px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] rounded-md border border-[#333] transition-all text-xs font-semibold"
+        title="Import Group (Legacy)"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -303,7 +466,7 @@
             points="17 8 12 3 7 8"
           /><line x1="12" y1="3" x2="12" y2="15" /></svg
         >
-        <span>Import</span>
+        <span>Import Grp</span>
       </button>
     </div>
   </header>
@@ -328,6 +491,159 @@
           }}
         >
           All History
+        </button>
+
+        <div class="pt-4 pb-2 px-3">
+          <span
+            class="text-[10px] font-bold uppercase tracking-widest text-zinc-600"
+            >Smart Groups</span
+          >
+        </div>
+
+        <button
+          class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
+          'URL'
+            ? 'bg-red-500/10 text-red-500 font-bold'
+            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+          onclick={() => (selectedGroup = "URL")}
+        >
+          <span class="flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><circle cx="12" cy="12" r="10"></circle><line
+                x1="2"
+                y1="12"
+                x2="22"
+                y2="12"
+              ></line><path
+                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+              ></path></svg
+            >
+            URLs
+          </span>
+        </button>
+
+        <button
+          class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
+          'Dev'
+            ? 'bg-red-500/10 text-red-500 font-bold'
+            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+          onclick={() => (selectedGroup = "Dev")}
+        >
+          <span class="flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><polyline points="4 17 10 11 4 5"></polyline><line
+                x1="12"
+                y1="19"
+                x2="20"
+                y2="19"
+              ></line></svg
+            >
+            Dev
+          </span>
+        </button>
+
+        <button
+          class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
+          'Code'
+            ? 'bg-red-500/10 text-red-500 font-bold'
+            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+          onclick={() => (selectedGroup = "Code")}
+        >
+          <span class="flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><polyline points="16 18 22 12 16 6"></polyline><polyline
+                points="8 6 2 12 8 18"
+              ></polyline></svg
+            >
+            Code
+          </span>
+        </button>
+
+        <button
+          class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
+          'Images'
+            ? 'bg-red-500/10 text-red-500 font-bold'
+            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+          onclick={() => (selectedGroup = "Images")}
+        >
+          <span class="flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><rect x="3" y="3" width="18" height="18" rx="2" ry="2"
+              ></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline
+                points="21 15 16 10 5 21"
+              ></polyline></svg
+            >
+            Images
+          </span>
+        </button>
+
+        <button
+          class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
+          'Text'
+            ? 'bg-red-500/10 text-red-500 font-bold'
+            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+          onclick={() => (selectedGroup = "Text")}
+        >
+          <span class="flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><path
+                d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+              ></path><polyline points="14 2 14 8 20 8"></polyline><line
+                x1="16"
+                y1="13"
+                x2="8"
+                y2="13"
+              ></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline
+                points="10 9 9 9 8 9"
+              ></polyline></svg
+            >
+            Text
+          </span>
         </button>
 
         <div class="pt-4 pb-2 px-3">
@@ -365,6 +681,8 @@
                 onclick={() => {
                   selectedGroup = group;
                 }}
+                ondragover={handleDragOver}
+                ondrop={(e) => handleDrop(e, group)}
               >
                 {group}
               </button>
@@ -551,13 +869,15 @@
               class="w-full p-4 rounded-xl border border-[#333] bg-[#1e1e1e] hover:bg-[#252525] transition-all group flex flex-col space-y-3 cursor-default
                             {i === selectedIndex
                 ? 'ring-2 ring-red-500/50 bg-[#252525]'
-                : ''}"
+                : ''} {draggedItemId === item.id ? 'opacity-50' : ''}"
               onclick={() => {
                 selectedIndex = i;
               }}
               role="button"
               tabindex="0"
               data-index={i}
+              draggable="true"
+              ondragstart={(e) => handleDragStart(e, item.id)}
             >
               <div class="flex items-start justify-between">
                 <div class="min-w-0 flex-1">
@@ -620,6 +940,24 @@
                 class="flex items-center justify-between border-t border-[#333]/50 pt-3"
               >
                 <div class="flex items-center space-x-3">
+                  <!-- Icon -->
+                  <div
+                    class="w-4 h-4 flex items-center justify-center text-zinc-500"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      {@html getCategoryIcon(item.category)}
+                    </svg>
+                  </div>
                   {#if item.category}
                     <span
                       class="text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20"
