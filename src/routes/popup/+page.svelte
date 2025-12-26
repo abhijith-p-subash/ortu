@@ -20,7 +20,7 @@
 
   // --- DERIVED ---
   let filteredCategories = $derived(
-    currentCategory
+    currentCategory || !searchQuery.trim()
       ? []
       : categories.filter((c) =>
           c.toLowerCase().includes(searchQuery.toLowerCase())
