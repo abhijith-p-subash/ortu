@@ -474,10 +474,14 @@
           fill="none"
           stroke="white"
           stroke-width="2.5"
-          ><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path
-            d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-          ></path></svg
+          stroke-linecap="round"
+          stroke-linejoin="round"
         >
+          <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline>
+          <path
+            d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"
+          ></path>
+        </svg>
       </div>
       <div>
         <h1 class="text-sm font-bold text-white tracking-tight">
