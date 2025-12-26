@@ -78,6 +78,17 @@
     await addToGroup(itemId, newGroupName.trim());
     newGroupName = "";
   }
+  async function togglePermanent(item: ClipboardItem) {
+    if (!item) return;
+    await invoke("toggle_permanent", { id: item.id });
+    await loadData();
+  }
+
+  async function deleteItem(item: ClipboardItem) {
+    if (!item) return;
+    await invoke("delete_entry", { id: item.id });
+    await loadData();
+  }
 
   // --- INTERACTION ---
   function handleKeydown(e: KeyboardEvent) {
@@ -113,6 +124,19 @@
       }
     } else if (e.key === "Backspace" && searchQuery === "" && currentCategory) {
       currentCategory = null;
+    } else if (e.key === "Delete" || (e.metaKey && e.key === "Backspace")) {
+      const catsCount = currentCategory ? 0 : filteredCategories.length;
+      const item = history[selectedIndex - catsCount];
+      if (item) {
+        deleteItem(item);
+      }
+    } else if (e.key === "p" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      const catsCount = currentCategory ? 0 : filteredCategories.length;
+      const item = history[selectedIndex - catsCount];
+      if (item) {
+        togglePermanent(item);
+      }
     }
   }
 
@@ -311,9 +335,33 @@
           <button
             onclick={(e) => {
               e.stopPropagation();
+              togglePermanent(item);
+            }}
+            class="p-1 hover:bg-[#444] rounded transition-all {item.is_permanent
+              ? 'text-amber-500 opacity-100'
+              : 'text-zinc-500 opacity-0 group-hover:opacity-100'}"
+            title={item.is_permanent ? "Unpin" : "Pin"}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill={item.is_permanent ? "currentColor" : "none"}
+              stroke="currentColor"
+              stroke-width="2.5"
+              ><path
+                d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+              /></svg
+            >
+          </button>
+          <button
+            onclick={(e) => {
+              e.stopPropagation();
               showGroupSelector = item.id;
             }}
             class="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#444] rounded transition-all"
+            title="Save to group"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
