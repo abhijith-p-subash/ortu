@@ -300,8 +300,10 @@
             </svg>
           </div>
 
-          <p class="text-[13px] truncate font-normal leading-tight flex-1">
-            {item.raw_content.replace(/\s+/g, " ")}
+          <p
+            class="text-[13px] font-normal leading-tight flex-1 break-words whitespace-pre-wrap line-clamp-4"
+          >
+            {item.raw_content}
           </p>
         </div>
 
