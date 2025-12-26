@@ -19,6 +19,7 @@
   let editingGroup = $state<string | null>(null);
   let editGroupName = $state("");
   let draggedItemId = $state<number | null>(null);
+  let expandedItems = $state<number[]>([]);
 
   // Import/Export State
   let showExportModal = $state(false);
@@ -1013,11 +1014,36 @@
             >
               <div class="flex items-start justify-between">
                 <div class="min-w-0 flex-1">
-                  <p
-                    class="text-[13px] text-zinc-100 font-normal leading-relaxed break-words whitespace-pre-wrap"
-                  >
-                    {item.raw_content}
-                  </p>
+                  <div class="relative">
+                    <p
+                      class="text-[13px] text-zinc-100 font-normal leading-relaxed break-words whitespace-pre-wrap {expandedItems.includes(
+                        item.id
+                      )
+                        ? ''
+                        : 'line-clamp-4'}"
+                    >
+                      {item.raw_content}
+                    </p>
+                    {#if item.raw_content.split("\n").length > 4 || item.raw_content.length > 300}
+                      <button
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          if (expandedItems.includes(item.id)) {
+                            expandedItems = expandedItems.filter(
+                              (id) => id !== item.id
+                            );
+                          } else {
+                            expandedItems = [...expandedItems, item.id];
+                          }
+                        }}
+                        class="text-[10px] font-bold text-red-500/80 hover:text-red-500 mt-1 uppercase tracking-widest"
+                      >
+                        {expandedItems.includes(item.id)
+                          ? "Collapse"
+                          : "Expand"}
+                      </button>
+                    {/if}
+                  </div>
                 </div>
                 <div class="flex items-center space-x-1 ml-4 self-start">
                   <button
