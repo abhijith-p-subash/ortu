@@ -20,6 +20,13 @@
   let editGroupName = $state("");
   let draggedItemId = $state<number | null>(null);
 
+  // Import/Export State
+  let showExportModal = $state(false);
+  let showImportModal = $state(false);
+  let exportSelectedGroups = $state<string[]>([]);
+  let importMode = $state<"merge" | "replace">("merge");
+  let processingIO = $state(false);
+
   async function loadHistory() {
     try {
       let prefix = "category:";
@@ -95,6 +102,72 @@
       await loadHistory();
     } catch (e) {
       console.error("Failed to rename group:", e);
+    }
+  }
+
+  async function openExportModal() {
+    exportSelectedGroups = [];
+    if (
+      selectedGroup &&
+      !["URL", "Dev", "Code", "Images", "Text"].includes(selectedGroup)
+    ) {
+      exportSelectedGroups = [selectedGroup];
+    }
+    showExportModal = true;
+  }
+
+  async function performExport() {
+    try {
+      const path = await save({
+        filters: [{ name: "JSON", extensions: ["json"] }],
+        defaultPath: `ortu_backup_${new Date().toISOString().split("T")[0]}.json`,
+      });
+      if (!path) return;
+
+      processingIO = true;
+      await invoke("backup_data", {
+        path,
+        groups: exportSelectedGroups.length > 0 ? exportSelectedGroups : [],
+      });
+
+      showExportModal = false;
+      alert("Export successful!");
+    } catch (e) {
+      console.error("Export failed:", e);
+      alert("Export failed: " + e);
+    } finally {
+      processingIO = false;
+    }
+  }
+
+  async function openImportModal() {
+    importMode = "merge";
+    showImportModal = true;
+  }
+
+  async function performImport() {
+    try {
+      const path = await open({
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (path) {
+        processingIO = true;
+        // path is string, explicit cast to correct type if needed (open returns string|null|string[])
+        // multiple: false by default so it returns string|null
+        await invoke("restore_data", {
+          path: path as string,
+          mode: importMode,
+        });
+        showImportModal = false;
+        await loadHistory();
+        await loadGroups();
+        alert("Import successful!");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error: " + e);
+    } finally {
+      processingIO = false;
     }
   }
 
@@ -220,10 +293,20 @@
     if (idStr) {
       const id = parseInt(idStr);
       if (!isNaN(id)) {
-        await invoke("set_category", { id, category: targetGroup });
+        // Updated to use add_to_group for items sticking to multiple groups
+        await invoke("add_to_group", { itemId: id, group: targetGroup });
         await loadHistory();
         draggedItemId = null;
       }
+    }
+  }
+
+  async function removeFromGroup(item: ClipboardItem, group: string) {
+    try {
+      await invoke("remove_from_group", { itemId: item.id, group });
+      await loadHistory();
+    } catch (e) {
+      console.error("Failed to remove group:", e);
     }
   }
 
@@ -793,6 +876,50 @@
           </button>
         </div>
       </div>
+      <div class="px-4 pb-4 flex items-center justify-between text-zinc-500">
+        <button
+          class="flex items-center space-x-2 hover:text-white transition-colors text-xs font-bold"
+          onclick={openImportModal}
+          title="Import Data"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline
+              points="7 10 12 15 17 10"
+            /><line x1="12" y1="15" x2="12" y2="3" /></svg
+          >
+          <span>Import</span>
+        </button>
+        <button
+          class="flex items-center space-x-2 hover:text-white transition-colors text-xs font-bold"
+          onclick={openExportModal}
+          title="Export Data"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline
+              points="17 8 12 3 7 8"
+            /><line x1="12" y1="3" x2="12" y2="15" /></svg
+          >
+          <span>Export</span>
+        </button>
+      </div>
     </aside>
 
     <!-- Main Content Area -->
@@ -958,7 +1085,25 @@
                       {@html getCategoryIcon(item.category)}
                     </svg>
                   </div>
-                  {#if item.category}
+                  {#if item.groups && item.groups.length > 0}
+                    {#each item.groups as group}
+                      <span
+                        class="flex items-center gap-1 text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20"
+                      >
+                        {group}
+                        <button
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            removeFromGroup(item, group);
+                          }}
+                          class="hover:text-white ml-1 px-1 rounded-full hover:bg-red-500/20"
+                          title="Remove from group"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    {/each}
+                  {:else if item.category}
                     <span
                       class="text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20"
                     >
@@ -1026,6 +1171,142 @@
       </div>
     </main>
   </div>
+
+  <!-- Export Modal -->
+  {#if showExportModal}
+    <div
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+    >
+      <div
+        class="w-full max-w-sm bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden p-6 animate-in zoom-in-95 duration-200"
+      >
+        <h3 class="text-sm font-bold text-white mb-4">Export Data</h3>
+
+        <div
+          class="max-h-60 overflow-y-auto mb-4 border border-[#333] rounded-lg p-2"
+        >
+          <label
+            class="flex items-center space-x-2 text-xs text-zinc-400 p-2 hover:bg-[#2a2a2a] rounded cursor-pointer"
+          >
+            <input
+              type="checkbox"
+              checked={exportSelectedGroups.length === 0}
+              onchange={() => (exportSelectedGroups = [])}
+              class="rounded border-zinc-600 bg-[#2a2a2a] text-red-500 focus:ring-red-500"
+            />
+            <span class="font-bold">All Data</span>
+          </label>
+          <div class="h-px bg-[#333] my-1"></div>
+          {#each groups as group}
+            <label
+              class="flex items-center space-x-2 text-xs text-zinc-400 p-2 hover:bg-[#2a2a2a] rounded cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={exportSelectedGroups.includes(group)}
+                onchange={(e) => {
+                  if (e.currentTarget.checked) {
+                    exportSelectedGroups = [...exportSelectedGroups, group];
+                  } else {
+                    exportSelectedGroups = exportSelectedGroups.filter(
+                      (g) => g !== group
+                    );
+                  }
+                }}
+                class="rounded border-zinc-600 bg-[#2a2a2a] text-red-500 focus:ring-red-500"
+              />
+              <span>{group}</span>
+            </label>
+          {/each}
+        </div>
+
+        <div class="flex justify-end space-x-3">
+          <button
+            class="px-4 py-2 text-xs text-zinc-500 font-bold hover:text-white transition-colors"
+            onclick={() => (showExportModal = false)}>Cancel</button
+          >
+          <button
+            class="px-6 py-2 bg-red-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all"
+            onclick={performExport}
+            disabled={processingIO}
+          >
+            {processingIO ? "Exporting..." : "Export"}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Import Modal -->
+  {#if showImportModal}
+    <div
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+    >
+      <div
+        class="w-full max-w-sm bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden p-6 animate-in zoom-in-95 duration-200"
+      >
+        <h3 class="text-sm font-bold text-white mb-4">Import Data</h3>
+
+        <div class="mb-6 space-y-3">
+          <label
+            class="flex items-center space-x-3 p-3 border border-[#333] rounded-xl cursor-pointer hover:bg-[#2a2a2a] transition-colors {importMode ===
+            'merge'
+              ? 'bg-[#2a2a2a] border-red-500/50'
+              : ''}"
+          >
+            <input
+              type="radio"
+              name="importMode"
+              value="merge"
+              bind:group={importMode}
+              class="text-red-500 focus:ring-red-500 bg-[#1e1e1e] border-zinc-600"
+            />
+            <div>
+              <div class="text-white text-xs font-bold">Merge</div>
+              <div class="text-[10px] text-zinc-500">
+                Combine with existing data
+              </div>
+            </div>
+          </label>
+
+          <label
+            class="flex items-center space-x-3 p-3 border border-[#333] rounded-xl cursor-pointer hover:bg-[#2a2a2a] transition-colors {importMode ===
+            'replace'
+              ? 'bg-[#2a2a2a] border-red-500/50'
+              : ''}"
+          >
+            <input
+              type="radio"
+              name="importMode"
+              value="replace"
+              bind:group={importMode}
+              class="text-red-500 focus:ring-red-500 bg-[#1e1e1e] border-zinc-600"
+            />
+            <div>
+              <div class="text-white text-xs font-bold">Replace</div>
+              <div class="text-[10px] text-zinc-500">
+                Overwrite all existing data
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <div class="flex justify-end space-x-3">
+          <button
+            class="px-4 py-2 text-xs text-zinc-500 font-bold hover:text-white transition-colors"
+            onclick={() => (showImportModal = false)}>Cancel</button
+          >
+          <button
+            class="px-6 py-2 bg-red-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all"
+            onclick={performImport}
+            disabled={processingIO}
+          >
+            {processingIO ? "Importing..." : "Select File"}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   <!-- Move to Group Popup (Absolute) -->
   {#if isCategorizing}

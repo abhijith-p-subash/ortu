@@ -26,6 +26,19 @@ pub fn set_category(app: AppHandle, id: i64, category: String) -> Result<(), Str
 }
 
 #[tauri::command]
+pub fn add_to_group(app: AppHandle, item_id: i64, group: String) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    db.add_to_group(item_id, group).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn remove_from_group(app: AppHandle, item_id: i64, group: String) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    db.remove_from_group(item_id, group)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn create_group(app: AppHandle, name: String) -> Result<(), String> {
     let db = app.state::<ClipboardDB>();
     db.create_group(name).map(|_| ()).map_err(|e| e.to_string())
@@ -59,17 +72,22 @@ pub async fn import_group(app: AppHandle, name: String, path: String) -> Result<
 }
 
 #[tauri::command]
-pub async fn backup_data(app: AppHandle, path: String) -> Result<(), String> {
+pub async fn backup_data(
+    app: AppHandle,
+    path: String,
+    groups: Option<Vec<String>>,
+) -> Result<(), String> {
     let db = app.state::<ClipboardDB>();
-    let json = db.get_all_data_json().map_err(|e| e.to_string())?;
+    let json = db.get_all_data_json(groups).map_err(|e| e.to_string())?;
     std::fs::write(path, json).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn restore_data(app: AppHandle, path: String) -> Result<(), String> {
+pub async fn restore_data(app: AppHandle, path: String, mode: String) -> Result<(), String> {
     let db = app.state::<ClipboardDB>();
     let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    db.restore_from_json(&json).map_err(|e| e.to_string())
+    db.restore_from_json(&json, &mode)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

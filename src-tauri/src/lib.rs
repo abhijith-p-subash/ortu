@@ -128,7 +128,9 @@ pub fn run() {
             commands::manual_cleanup,
             commands::close_window,
             commands::backup_data,
-            commands::restore_data
+            commands::restore_data,
+            commands::add_to_group,
+            commands::remove_from_group
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri app");
