@@ -168,7 +168,10 @@
           searchQuery = "";
           selectedIndex = 0;
           loadData(); // Force reload when window pops up
-          tick().then(() => searchInput?.focus());
+          tick().then(() => {
+            searchInput?.focus();
+            container?.scrollTo({ top: 0, behavior: "instant" });
+          });
         });
 
         // 2. Handle real-time updates while window is ALREADY open
