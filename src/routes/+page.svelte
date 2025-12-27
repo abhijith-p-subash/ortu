@@ -467,28 +467,10 @@
       <div
         class="w-8 h-8 rounded-full flex items-center justify-center shadow-lg shadow-red-500/20"
       >
-        <!-- <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="white"
-          stroke-width="2.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline>
-          <path
-            d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"
-          ></path>
-        </svg> -->
         <img src="/logo.png" alt="" srcset="" />
       </div>
       <div>
-        <h1 class="text-sm font-bold text-white tracking-tight">
-          Ortu Manager
-        </h1>
+        <h1 class="text-sm font-bold text-white tracking-tight">Ortu</h1>
         <p
           class="text-[10px] text-zinc-500 font-medium uppercase tracking-widest"
         >
@@ -496,7 +478,7 @@
         </p>
       </div>
     </div>
-    <div class="flex items-center space-x-2">
+    <!-- <div class="flex items-center space-x-2">
       <button
         onclick={backupData}
         class="flex items-center space-x-2 px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] rounded-md border border-[#333] transition-all text-xs font-semibold"
@@ -557,7 +539,7 @@
         >
         <span>Import Grp</span>
       </button>
-    </div>
+    </div> -->
   </header>
 
   <div class="flex flex-1 overflow-hidden">
