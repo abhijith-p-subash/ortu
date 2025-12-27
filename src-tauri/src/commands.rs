@@ -112,6 +112,13 @@ pub async fn paste_item(_app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn export_all_txt(app: AppHandle, path: String) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    db.export_all_txt(std::path::PathBuf::from(path))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn manual_cleanup(app: AppHandle) -> Result<(), String> {
     let db = app.state::<ClipboardDB>();
     db.prune_expired().map_err(|e| e.to_string())

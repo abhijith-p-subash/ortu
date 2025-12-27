@@ -130,7 +130,8 @@ pub fn run() {
             commands::backup_data,
             commands::restore_data,
             commands::add_to_group,
-            commands::remove_from_group
+            commands::remove_from_group,
+            commands::export_all_txt
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri app");

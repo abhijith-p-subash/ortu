@@ -13,6 +13,7 @@
   let container = $state<HTMLDivElement | null>(null);
   let searchInput = $state<HTMLInputElement | null>(null);
   let isCategorizing = $state(false);
+  let categorizingItemId = $state<number | null>(null);
   let isViewingGroups = $state(false);
   let selectedGroup = $state<string | null>(null);
   let newGroupName = $state("");
@@ -175,12 +176,27 @@
         filters: [{ name: "Text", extensions: ["txt"] }],
         defaultPath: `${name}_export.txt`,
       });
-      if (path) {
+      if (path && typeof path === "string") {
         await invoke("export_group", { name, path });
         alert("Export successful!");
       }
     } catch (e) {
       console.error("Failed to export group:", e);
+    }
+  }
+
+  async function exportAllTxt() {
+    try {
+      const path = await save({
+        filters: [{ name: "Text", extensions: ["txt"] }],
+        defaultPath: `ortu_full_export.txt`,
+      });
+      if (path && typeof path === "string") {
+        await invoke("export_all_txt", { path });
+        alert("Full export successful!");
+      }
+    } catch (e) {
+      console.error("Failed to export all:", e);
     }
   }
 
@@ -203,46 +219,6 @@
     }
   }
 
-  async function backupData() {
-    try {
-      const path = await save({
-        filters: [{ name: "JSON", extensions: ["json"] }],
-        defaultPath: `ortu_backup_${new Date().toISOString().split("T")[0]}.json`,
-      });
-      if (path) {
-        await invoke("backup_data", { path });
-        alert("Backup successful!");
-      }
-    } catch (e) {
-      console.error("Failed to backup data:", e);
-      alert("Failed to backup data: " + e);
-    }
-  }
-
-  async function restoreData() {
-    if (
-      !confirm(
-        "WARNING: Restore will overwrite ALL current history and groups. Continue?"
-      )
-    )
-      return;
-
-    try {
-      const path = await open({
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      });
-      if (path && typeof path === "string") {
-        await invoke("restore_data", { path });
-        await loadGroups();
-        await loadHistory();
-        alert("Restore successful!");
-      }
-    } catch (e) {
-      console.error("Failed to restore data:", e);
-      alert("Failed to restore data: " + e);
-    }
-  }
-
   async function togglePermanent(item: ClipboardItem) {
     await invoke("toggle_permanent", { id: item.id });
     await loadHistory();
@@ -255,18 +231,22 @@
   }
 
   async function moveItemToGroup() {
-    if (!history[selectedIndex] || !newGroupName.trim()) return;
+    const itemId =
+      categorizingItemId ||
+      (history[selectedIndex] ? history[selectedIndex].id : null);
+    if (!itemId || !newGroupName.trim()) return;
+
     try {
-      await invoke("set_category", {
-        id: history[selectedIndex].id,
-        category: newGroupName.trim(),
+      await invoke("add_to_group", {
+        itemId,
+        groupName: newGroupName.trim(),
       });
       isCategorizing = false;
       newGroupName = "";
       await loadHistory();
       await loadGroups();
     } catch (e) {
-      console.error("Failed to move item to group:", e);
+      console.error("Failed to add item to group:", e);
     }
   }
 
@@ -446,11 +426,11 @@
         </p>
       </div>
     </div>
-    <!-- <div class="flex items-center space-x-2">
+    <div class="flex items-center space-x-2">
       <button
-        onclick={backupData}
+        onclick={openExportModal}
         class="flex items-center space-x-2 px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] rounded-md border border-[#333] transition-all text-xs font-semibold"
-        title="Backup Full History"
+        title="Full Backup (.json)"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -469,9 +449,9 @@
         <span>Backup</span>
       </button>
       <button
-        onclick={restoreData}
+        onclick={openImportModal}
         class="flex items-center space-x-2 px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] rounded-md border border-[#333] transition-all text-xs font-semibold"
-        title="Restore Full History"
+        title="Restore Data (.json)"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -489,9 +469,9 @@
       </button>
       <div class="w-px h-4 bg-[#333] mx-1"></div>
       <button
-        onclick={importGroup}
+        onclick={exportAllTxt}
         class="flex items-center space-x-2 px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] rounded-md border border-[#333] transition-all text-xs font-semibold"
-        title="Import Group (Legacy)"
+        title="Export All to .TXT"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -505,9 +485,27 @@
             points="17 8 12 3 7 8"
           /><line x1="12" y1="3" x2="12" y2="15" /></svg
         >
-        <span>Import Grp</span>
+        <span>Export All</span>
       </button>
-    </div> -->
+      <button
+        onclick={() => (isViewingGroups = true)}
+        class="flex items-center space-x-2 px-4 py-1.5 bg-red-500 hover:bg-red-600 rounded-md shadow-lg shadow-red-500/20 text-white transition-all text-xs font-bold"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          ><path
+            d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+          ></path></svg
+        >
+        <span>Manage Groups</span>
+      </button>
+    </div>
   </header>
 
   <div class="flex flex-1 overflow-hidden">
@@ -741,84 +739,6 @@
           </div>
         {/each}
       </div>
-
-      <div class="p-4 border-t border-[#333]">
-        <div class="flex items-center space-x-2">
-          <input
-            type="text"
-            bind:value={newGroupName}
-            placeholder="Create group..."
-            class="flex-1 bg-[#252525] border border-[#333] rounded px-3 py-1.5 text-xs focus:outline-none focus:border-red-500/30 transition-all"
-            onkeydown={(e) => {
-              if (e.key === "Enter") createGroup();
-            }}
-          />
-          <button
-            onclick={createGroup}
-            class="p-1.5 bg-[#2a2a2a] rounded hover:text-red-500 transition-colors"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              ><line x1="12" y1="5" x2="12" y2="19" /><line
-                x1="5"
-                y1="12"
-                x2="19"
-                y2="12"
-              /></svg
-            >
-          </button>
-        </div>
-      </div>
-      <div class="px-4 pb-4 flex items-center justify-between text-zinc-500">
-        <button
-          class="flex items-center space-x-2 hover:text-white transition-colors text-xs font-bold"
-          onclick={openImportModal}
-          title="Import Data"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline
-              points="7 10 12 15 17 10"
-            /><line x1="12" y1="15" x2="12" y2="3" /></svg
-          >
-          <span>Import</span>
-        </button>
-        <button
-          class="flex items-center space-x-2 hover:text-white transition-colors text-xs font-bold"
-          onclick={openExportModal}
-          title="Export Data"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline
-              points="17 8 12 3 7 8"
-            /><line x1="12" y1="3" x2="12" y2="15" /></svg
-          >
-          <span>Export</span>
-        </button>
-      </div>
     </aside>
 
     <!-- Main Content Area -->
@@ -959,6 +879,32 @@
                         d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
                       /></svg
                     >
+                  </button>
+                  <button
+                    class="p-2 rounded-lg hover:bg-[#333] hover:text-red-500 transition-colors text-zinc-600"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      categorizingItemId = item.id;
+                      newGroupName = "";
+                      isCategorizing = true;
+                    }}
+                    title="Add to Group"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                      ></path>
+                      <line x1="12" y1="11" x2="12" y2="17"></line>
+                      <line x1="9" y1="14" x2="15" y2="14"></line>
+                    </svg>
                   </button>
                   <button
                     class="p-2 rounded-lg hover:bg-red-500/10 hover:text-red-500 transition-colors text-zinc-600"
@@ -1230,42 +1176,304 @@
     </div>
   {/if}
 
+  <!-- Manage Groups Modal -->
+  {#if isViewingGroups}
+    <div
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+    >
+      <div
+        class="w-full max-w-2xl bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200"
+      >
+        <div
+          class="px-6 py-4 border-b border-[#333] flex justify-between items-center bg-[#1e1e1e]"
+        >
+          <div>
+            <h2 class="text-lg font-bold text-white">Manage Groups</h2>
+            <p class="text-xs text-zinc-500">Create and organize your clips</p>
+          </div>
+          <button
+            onclick={() => (isViewingGroups = false)}
+            class="text-zinc-500 hover:text-white"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              ><line x1="18" y1="6" x2="6" y2="18"></line><line
+                x1="6"
+                y1="6"
+                x2="18"
+                y2="18"
+              ></line></svg
+            >
+          </button>
+        </div>
+
+        <div class="p-6 border-b border-[#333] bg-[#1a1a1a]">
+          <div class="flex items-center space-x-3">
+            <input
+              type="text"
+              bind:value={newGroupName}
+              placeholder="New group name..."
+              class="flex-1 bg-[#252525] border border-[#333] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-red-500/50 transition-all font-medium"
+              onkeydown={(e) => {
+                if (e.key === "Enter") createGroup();
+              }}
+            />
+            <button
+              onclick={createGroup}
+              class="px-6 py-2.5 bg-red-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all"
+            >
+              Create Group
+            </button>
+          </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3">
+          {#each groups as group}
+            <div
+              class="flex items-center justify-between p-4 bg-[#252525] rounded-xl border border-transparent hover:border-[#333] transition-all group"
+            >
+              <div class="flex items-center space-x-4 flex-1">
+                <div
+                  class="w-10 h-10 rounded-lg bg-[#1e1e1e] flex items-center justify-center text-red-500/70"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    ><path
+                      d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                    ></path></svg
+                  >
+                </div>
+                {#if editingGroup === group}
+                  <input
+                    type="text"
+                    bind:value={editGroupName}
+                    class="flex-1 bg-[#1e1e1e] text-sm px-3 py-1.5 rounded-lg focus:outline-none text-white border border-red-500/50"
+                    autofocus
+                    onblur={renameGroup}
+                    onkeydown={(e) => {
+                      if (e.key === "Enter") renameGroup();
+                      if (e.key === "Escape") editingGroup = null;
+                    }}
+                  />
+                {:else}
+                  <div>
+                    <h3 class="text-sm font-bold text-white">{group}</h3>
+                    <p
+                      class="text-[10px] text-zinc-500 font-medium uppercase tracking-widest mt-0.5"
+                    >
+                      User Created Group
+                    </p>
+                  </div>
+                {/if}
+              </div>
+
+              <div class="flex items-center space-x-2">
+                <button
+                  onclick={() => {
+                    editingGroup = group;
+                    editGroupName = group;
+                  }}
+                  class="p-2 text-zinc-500 hover:text-white hover:bg-[#333] rounded-lg transition-all"
+                  title="Rename"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    ><path
+                      d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+                    /><path
+                      d="M18.5 2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
+                    /></svg
+                  >
+                </button>
+                <button
+                  onclick={() => exportGroup(group)}
+                  class="p-2 text-zinc-500 hover:text-white hover:bg-[#333] rounded-lg transition-all"
+                  title="Export Group to .TXT"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    ><path
+                      d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
+                    /><polyline points="7 10 12 15 17 10" /><line
+                      x1="12"
+                      y1="15"
+                      x2="12"
+                      y2="3"
+                    /></svg
+                  >
+                </button>
+                <button
+                  onclick={() => deleteGroup(group)}
+                  class="p-2 text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                  title="Delete Group"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    ><path d="M3 6h18"></path><path
+                      d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
+                    ></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
+                    ></path></svg
+                  >
+                </button>
+              </div>
+            </div>
+          {:else}
+            <div
+              class="flex flex-col items-center justify-center py-12 text-center"
+            >
+              <div
+                class="w-16 h-16 bg-[#252525] rounded-2xl flex items-center justify-center mb-4 text-zinc-700"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="32"
+                  height="32"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  ><path
+                    d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                  ></path></svg
+                >
+              </div>
+              <h3 class="text-zinc-400 font-bold">No custom groups</h3>
+              <p class="text-zinc-600 text-xs mt-1">
+                Create your first group above to organize your clips
+              </p>
+            </div>
+          {/each}
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Move to Group Popup (Absolute) -->
   <!-- Move to Group Popup (Absolute) -->
   {#if isCategorizing}
     <div
       class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
     >
       <div
-        class="w-full max-w-sm bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden p-6 animate-in zoom-in-95 duration-200"
+        class="w-full max-w-[280px] bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in zoom-in-95 duration-200"
       >
-        <h3 class="text-sm font-bold text-white mb-1">Move to Group</h3>
-        <p
-          class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-4"
+        <div
+          class="px-4 py-3 border-b border-[#333] flex justify-between items-center bg-[#1e1e1e]"
         >
-          Select or create a new group
-        </p>
-
-        <input
-          type="text"
-          bind:value={newGroupName}
-          placeholder="Enter group name..."
-          class="w-full bg-[#2a2a2a] border border-[#333] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-red-500/50 transition-all mb-4"
-          autofocus
-          onkeydown={(e) => {
-            if (e.key === "Escape") isCategorizing = false;
-            if (e.key === "Enter") moveItemToGroup();
-          }}
-        />
-
-        <div class="flex justify-end space-x-3">
-          <button
-            class="px-4 py-2 text-xs text-zinc-500 font-bold hover:text-white transition-colors"
-            onclick={() => (isCategorizing = false)}>Cancel</button
+          <span
+            class="text-[10px] font-bold uppercase tracking-widest text-zinc-500"
+            >Save to Group</span
           >
           <button
-            class="px-6 py-2 bg-red-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all"
-            onclick={moveItemToGroup}>Move Clip</button
+            onclick={() => (isCategorizing = false)}
+            class="text-zinc-500 hover:text-white">✕</button
           >
+        </div>
+
+        <div class="p-2 border-b border-[#333] bg-[#1a1a1a]">
+          <input
+            type="text"
+            bind:value={newGroupName}
+            placeholder="New or search group..."
+            class="w-full bg-[#252525] border border-[#333] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-red-500/50 transition-all font-medium"
+            autofocus
+            onkeydown={(e) => {
+              if (e.key === "Enter") moveItemToGroup();
+              if (e.key === "Escape") isCategorizing = false;
+            }}
+          />
+        </div>
+
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-1">
+          {#each groups.filter((g) => g
+              .toLowerCase()
+              .includes(newGroupName.toLowerCase())) as group}
+            <button
+              onclick={() => {
+                newGroupName = group;
+                moveItemToGroup();
+              }}
+              class="w-full text-left px-3 py-2 text-xs hover:bg-[#2a2a2a] rounded-lg transition-all flex items-center space-x-2 text-zinc-400 hover:text-white"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                class="text-red-500/50"
+                ><path
+                  d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                ></path></svg
+              >
+              <span>{group}</span>
+            </button>
+          {/each}
+          {#if newGroupName && !groups.includes(newGroupName)}
+            <button
+              onclick={moveItemToGroup}
+              class="w-full text-left px-3 py-2 text-xs hover:bg-red-500/10 rounded-lg transition-all flex items-center space-x-2 text-red-500"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                ><line x1="12" y1="5" x2="12" y2="19"></line><line
+                  x1="5"
+                  y1="12"
+                  x2="19"
+                  y2="12"
+                ></line></svg
+              >
+              <span>Create "{newGroupName}"</span>
+            </button>
+          {/if}
+        </div>
+
+        <div class="p-2 border-t border-[#333] bg-[#1a1a1a] flex justify-end">
+          <button
+            onclick={moveItemToGroup}
+            class="px-4 py-1.5 bg-red-500 text-white rounded-lg text-xs font-bold hover:bg-red-600 transition-all"
+            disabled={!newGroupName.trim()}
+          >
+            Save
+          </button>
         </div>
       </div>
     </div>

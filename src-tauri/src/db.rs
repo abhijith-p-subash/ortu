@@ -154,14 +154,39 @@ impl ClipboardDB {
     }
 
     pub fn export_group(&self, name: String, path: std::path::PathBuf) -> Result<()> {
-        let items = self.get_history(Some(format!("category:{}", name)))?;
-        let content = items
-            .into_iter()
-            .map(|i| i.raw_content)
-            .collect::<Vec<_>>()
-            .join("\n---\n"); // Using a separator for clarity
+        let conn = self.conn.lock().unwrap();
+        // Fetch items associated with this group name via item_groups
+        let mut stmt = conn.prepare(
+            "SELECT h.raw_content 
+             FROM history h
+             JOIN item_groups ig ON h.id = ig.item_id
+             JOIN groups g ON ig.group_id = g.id
+             WHERE g.name = ?1
+             ORDER BY h.created_at DESC",
+        )?;
+        let rows = stmt.query_map(params![name], |row| row.get::<_, String>(0))?;
+        let mut content = Vec::new();
+        for r in rows {
+            content.push(r?);
+        }
 
-        std::fs::write(path, content)
+        let output = content.join("\n---\n");
+        std::fs::write(path, output)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        Ok(())
+    }
+
+    pub fn export_all_txt(&self, path: std::path::PathBuf) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT raw_content FROM history ORDER BY created_at DESC")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        let mut content = Vec::new();
+        for r in rows {
+            content.push(r?);
+        }
+
+        let output = content.join("\n---\n");
+        std::fs::write(path, output)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         Ok(())
     }
@@ -224,23 +249,22 @@ impl ClipboardDB {
                 stmt = conn.prepare(&sql)?;
                 rows = stmt.query(params![search_pattern])?;
             } else if s.starts_with("category:") {
-                // Format is "category:GroupName Optional Search"
-                // Fallback to simple split for now
+                // Filter items by category/group name in item_groups
                 let parts: Vec<&str> = s.splitn(2, ' ').collect();
-                let cat_part = parts[0].replace("category:", "");
-                let search_part_val = if parts.len() > 1 { parts[1] } else { "" };
-
-                let cat_pattern = cat_part;
-                let text_pattern = format!("%{}%", search_part_val);
+                let cat_name = parts[0].replace("category:", "");
+                let search_term = if parts.len() > 1 { parts[1] } else { "" };
+                let search_pattern = format!("%{}%", search_term);
 
                 stmt = conn.prepare(
-                    "SELECT id, content_type, raw_content, category, is_permanent, created_at 
-                     FROM history 
-                     WHERE category = ?1 AND raw_content LIKE ?2 
-                     ORDER BY is_permanent DESC, created_at DESC 
+                    "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at 
+                     FROM history h
+                     JOIN item_groups ig ON h.id = ig.item_id
+                     JOIN groups g ON ig.group_id = g.id
+                     WHERE g.name = ?1 AND h.raw_content LIKE ?2
+                     ORDER BY h.is_permanent DESC, h.created_at DESC 
                      LIMIT 100",
                 )?;
-                rows = stmt.query(params![cat_pattern, text_pattern])?;
+                rows = stmt.query(params![cat_name, search_pattern])?;
             } else {
                 let pattern = format!("%{}%", s);
                 stmt = conn.prepare(
@@ -438,7 +462,7 @@ impl ClipboardDB {
 
     pub fn get_categories(&self) -> Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT DISTINCT category FROM history WHERE category IS NOT NULL ORDER BY category ASC")?;
+        let mut stmt = conn.prepare("SELECT name FROM groups ORDER BY name ASC")?;
         let rows = stmt.query_map([], |row| row.get(0))?;
         let mut categories = Vec::new();
         for cat in rows {
@@ -601,7 +625,7 @@ impl ClipboardDB {
         {
             let mut insert_stmt = tx.prepare(
                 "INSERT INTO history (content_type, raw_content, category, is_permanent, created_at) 
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+                 VALUES (?1, ?2, ?3, ?4, ?5)"
             )?;
 
             // For checking existence in Merge mode

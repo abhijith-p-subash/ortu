@@ -10,6 +10,10 @@
     "core:default",
     "opener:default",
     "global-shortcut:default",
-    "positioner:default"
+    "positioner:default",
+    "dialog:default",
+    "dialog:allow-save",
+    "dialog:allow-open",
+    "dialog:allow-message"
   ]
 }
