@@ -238,7 +238,7 @@
 
     try {
       await invoke("add_to_group", {
-        itemId,
+        itemId: itemId,
         groupName: newGroupName.trim(),
       });
       isCategorizing = false;
@@ -252,7 +252,7 @@
 
   async function removeFromGroup(item: ClipboardItem, group: string) {
     try {
-      await invoke("remove_from_group", { itemId: item.id, group });
+      await invoke("remove_from_group", { itemId: item.id, groupName: group });
       await loadHistory();
     } catch (e) {
       console.error("Failed to remove group:", e);

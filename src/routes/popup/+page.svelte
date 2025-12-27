@@ -66,8 +66,8 @@
     }
   }
 
-  async function addToGroup(itemId: number, category: string) {
-    await invoke("set_category", { id: itemId, category });
+  async function addToGroup(itemId: number, groupName: string) {
+    await invoke("add_to_group", { itemId, groupName });
     showGroupSelector = null;
     loadData(); // Manual refresh after DB change
   }

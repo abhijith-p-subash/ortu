@@ -26,15 +26,16 @@ pub fn set_category(app: AppHandle, id: i64, category: String) -> Result<(), Str
 }
 
 #[tauri::command]
-pub fn add_to_group(app: AppHandle, item_id: i64, group: String) -> Result<(), String> {
+pub fn add_to_group(app: AppHandle, item_id: i64, group_name: String) -> Result<(), String> {
     let db = app.state::<ClipboardDB>();
-    db.add_to_group(item_id, group).map_err(|e| e.to_string())
+    db.add_to_group(item_id, group_name)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn remove_from_group(app: AppHandle, item_id: i64, group: String) -> Result<(), String> {
+pub fn remove_from_group(app: AppHandle, item_id: i64, group_name: String) -> Result<(), String> {
     let db = app.state::<ClipboardDB>();
-    db.remove_from_group(item_id, group)
+    db.remove_from_group(item_id, group_name)
         .map_err(|e| e.to_string())
 }
 

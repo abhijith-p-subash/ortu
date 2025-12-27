@@ -43,10 +43,11 @@ impl ClipboardDB {
 
         let conn = Connection::open(db_path)?;
 
-        // Enable WAL mode for performance
+        // Enable WAL mode for performance and enforce foreign keys
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
-             PRAGMA synchronous = NORMAL;",
+             PRAGMA synchronous = NORMAL;
+             PRAGMA foreign_keys = ON;",
         )?;
 
         conn.execute(
@@ -69,6 +70,26 @@ impl ClipboardDB {
             )",
             [],
         )?;
+
+        // Migration: Fix incorrect item_groups foreign key reference if it exists
+        let needs_fix = {
+            let mut stmt = conn.prepare("PRAGMA foreign_key_list('item_groups')")?;
+            let mut rows = stmt.query([])?;
+            let mut found = false;
+            while let Some(row) = rows.next()? {
+                let referenced_table: String = row.get(2)?;
+                if referenced_table == "clipboard_items" {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+
+        if needs_fix {
+            println!("DB: Fixing incorrect item_groups schema...");
+            conn.execute("DROP TABLE item_groups", [])?;
+        }
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS item_groups (
@@ -340,39 +361,57 @@ impl ClipboardDB {
     }
 
     pub fn add_to_group(&self, item_id: i64, group_name: String) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        // Check if item exists to avoid generic FK error
+        let item_exists: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM history WHERE id = ?1)",
+            params![item_id],
+            |row| row.get(0),
+        )?;
+
+        if !item_exists {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+
         // Ensure group exists
-        conn.execute(
+        tx.execute(
             "INSERT OR IGNORE INTO groups (name) VALUES (?1)",
             params![group_name],
         )?;
-        let group_id: i64 = conn.query_row(
+        let group_id: i64 = tx.query_row(
             "SELECT id FROM groups WHERE name = ?1",
             params![group_name],
             |row| row.get(0),
         )?;
 
-        conn.execute(
+        tx.execute(
             "INSERT OR IGNORE INTO item_groups (item_id, group_id) VALUES (?1, ?2)",
             params![item_id, group_id],
         )?;
+
+        tx.commit()?;
         Ok(())
     }
 
     pub fn remove_from_group(&self, item_id: i64, group_name: String) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        let group_id_res: Result<i64> = conn.query_row(
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        let group_id_res: Result<i64> = tx.query_row(
             "SELECT id FROM groups WHERE name = ?1",
             params![group_name],
             |row| row.get(0),
         );
 
         if let Ok(group_id) = group_id_res {
-            conn.execute(
+            tx.execute(
                 "DELETE FROM item_groups WHERE item_id = ?1 AND group_id = ?2",
                 params![item_id, group_id],
             )?;
         }
+        tx.commit()?;
         Ok(())
     }
 
