@@ -128,12 +128,6 @@ impl ClipboardDB {
             [],
         )?;
 
-        // Add index for performance
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_created_at ON history(created_at DESC)",
-            [],
-        )?;
-
         Ok(ClipboardDB {
             conn: Mutex::new(conn),
         })

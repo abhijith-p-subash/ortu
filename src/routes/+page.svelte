@@ -322,8 +322,15 @@
     const selectedElement = container.querySelector(
       `[data-index="${selectedIndex}"]`
     );
-    selectedElement?.scrollIntoView({ block: "nearest" });
+    selectedElement?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
+
+  // Auto-scroll when selection changes
+  $effect(() => {
+    if (selectedIndex !== undefined) {
+      scrollIntoView();
+    }
+  });
 
   $effect(() => {
     if (searchQuery !== undefined || selectedGroup !== undefined) {
@@ -342,15 +349,18 @@
     const setupListeners = async () => {
       try {
         const uFocus = await listen("tauri://focus", async () => {
+          console.log("Main window focused - refreshing");
           await loadHistory();
           await loadGroups();
-          selectedIndex = 0;
+          // Reset select only if history was empty or search changed?
+          // For now, keep selection if possible, but focus search.
           await tick();
           searchInput?.focus();
         });
         unlistenFocus = uFocus;
 
         const uClipboard = await listen("clipboard-updated", async () => {
+          console.log("Clipboard update received in main window");
           await loadHistory();
         });
         unlistenClipboard = uClipboard;
@@ -874,11 +884,15 @@
                       viewBox="0 0 24 24"
                       fill={item.is_permanent ? "currentColor" : "none"}
                       stroke="currentColor"
-                      stroke-width="2"
-                      ><path
-                        d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-                      /></svg
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
                     >
+                      <line x1="12" y1="17" x2="12" y2="22"></line>
+                      <path
+                        d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"
+                      ></path>
+                    </svg>
                   </button>
                   <button
                     class="p-2 rounded-lg hover:bg-[#333] hover:text-red-500 transition-colors text-zinc-600"
@@ -959,16 +973,18 @@
                         class="flex items-center gap-1 text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20"
                       >
                         {group}
-                        <button
-                          onclick={(e) => {
-                            e.stopPropagation();
-                            removeFromGroup(item, group);
-                          }}
-                          class="hover:text-white ml-1 px-1 rounded-full hover:bg-red-500/20"
-                          title="Remove from group"
-                        >
-                          ×
-                        </button>
+                        {#if selectedGroup === group}
+                          <button
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              removeFromGroup(item, group);
+                            }}
+                            class="hover:text-white ml-1 px-1 rounded-full hover:bg-red-500/20"
+                            title="Remove from group"
+                          >
+                            ×
+                          </button>
+                        {/if}
                       </span>
                     {/each}
                   {:else if item.category}

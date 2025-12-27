@@ -353,10 +353,14 @@
               fill={item.is_permanent ? "currentColor" : "none"}
               stroke="currentColor"
               stroke-width="2.5"
-              ><path
-                d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-              /></svg
+              stroke-linecap="round"
+              stroke-linejoin="round"
             >
+              <line x1="12" y1="17" x2="12" y2="22"></line>
+              <path
+                d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"
+              ></path>
+            </svg>
           </button>
           <button
             onclick={(e) => {
