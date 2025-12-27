@@ -1,5 +1,5 @@
 import type { Config } from "tailwindcss";
-import lineClamp from "@tailwindcss/line-clamp";
+
 
 export default {
   content: ["./src/**/*.{html,js,svelte,ts}"],
@@ -8,5 +8,5 @@ export default {
     extend: {}
   },
 
-  plugins: [lineClamp]
+  plugins: []
 } as Config;
