@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Ortu Manager",
+        "title": "Ortu",
         "label": "main",
         "width": 1000,
         "height": 700,

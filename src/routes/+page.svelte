@@ -20,6 +20,7 @@
   let editGroupName = $state("");
   let draggedItemId = $state<number | null>(null);
   let expandedItems = $state<number[]>([]);
+  let hoveredDropTarget = $state<string | null>(null);
 
   // Import/Export State
   let showExportModal = $state(false);
@@ -32,9 +33,7 @@
     try {
       let prefix = "category:";
       // Check if it's a known smart group
-      if (
-        ["Dev", "Code", "URL", "Images", "Text"].includes(selectedGroup || "")
-      ) {
+      if (["URL", "Images", "Text"].includes(selectedGroup || "")) {
         prefix = "group:";
       }
 
@@ -281,21 +280,44 @@
     }
   }
 
-  function handleDragOver(e: DragEvent) {
+  function handleDragEnd(e: DragEvent) {
+    draggedItemId = null;
+    hoveredDropTarget = null;
+  }
+
+  function handleDragOver(e: DragEvent, target: string) {
     e.preventDefault();
     if (e.dataTransfer) {
       e.dataTransfer.dropEffect = "move";
+      hoveredDropTarget = target;
     }
   }
 
-  async function handleDrop(e: DragEvent, targetGroup: string) {
+  function handleDragLeave(e: DragEvent) {
+    hoveredDropTarget = null;
+  }
+
+  async function handleDrop(e: DragEvent, targetGroup: string | null) {
     e.preventDefault();
+    hoveredDropTarget = null;
     const idStr = e.dataTransfer?.getData("text/plain");
     if (idStr) {
       const id = parseInt(idStr);
       if (!isNaN(id)) {
-        // Updated to use add_to_group for items sticking to multiple groups
-        await invoke("add_to_group", { itemId: id, group: targetGroup });
+        if (targetGroup === null) {
+          // Drop on "All History" -> Remove all manual group associations
+          // We can iterate and remove_from_group for each group the item has
+          const item = history.find((h) => h.id === id);
+          if (item?.groups) {
+            for (const g of item.groups) {
+              await invoke("remove_from_group", { itemId: id, group: g });
+            }
+          }
+          // Also clear the single legacy category if any
+          await invoke("set_category", { id, category: null });
+        } else {
+          await invoke("add_to_group", { itemId: id, group: targetGroup });
+        }
         await loadHistory();
         draggedItemId = null;
       }
@@ -556,10 +578,15 @@
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           null
             ? 'bg-red-500/10 text-red-500 font-bold'
-            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+            : 'text-zinc-400 hover:bg-[#2a2a2a]'} {hoveredDropTarget === 'all'
+            ? 'ring-2 ring-red-500/50 bg-red-500/10'
+            : ''}"
           onclick={() => {
             selectedGroup = null;
           }}
+          ondragover={(e) => handleDragOver(e, "all")}
+          ondrop={(e) => handleDrop(e, null)}
+          ondragleave={handleDragLeave}
         >
           All History
         </button>
@@ -575,8 +602,13 @@
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           'URL'
             ? 'bg-red-500/10 text-red-500 font-bold'
-            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+            : 'text-zinc-400 hover:bg-[#2a2a2a]'} {hoveredDropTarget === 'URL'
+            ? 'ring-2 ring-red-500/50 bg-red-500/10'
+            : ''}"
           onclick={() => (selectedGroup = "URL")}
+          ondragover={(e) => handleDragOver(e, "URL")}
+          ondrop={(e) => handleDrop(e, "URL")}
+          ondragleave={handleDragLeave}
         >
           <span class="flex items-center gap-2">
             <svg
@@ -604,65 +636,16 @@
 
         <button
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
-          'Dev'
-            ? 'bg-red-500/10 text-red-500 font-bold'
-            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
-          onclick={() => (selectedGroup = "Dev")}
-        >
-          <span class="flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              ><polyline points="4 17 10 11 4 5"></polyline><line
-                x1="12"
-                y1="19"
-                x2="20"
-                y2="19"
-              ></line></svg
-            >
-            Dev
-          </span>
-        </button>
-
-        <button
-          class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
-          'Code'
-            ? 'bg-red-500/10 text-red-500 font-bold'
-            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
-          onclick={() => (selectedGroup = "Code")}
-        >
-          <span class="flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              ><polyline points="16 18 22 12 16 6"></polyline><polyline
-                points="8 6 2 12 8 18"
-              ></polyline></svg
-            >
-            Code
-          </span>
-        </button>
-
-        <button
-          class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           'Images'
             ? 'bg-red-500/10 text-red-500 font-bold'
-            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+            : 'text-zinc-400 hover:bg-[#2a2a2a]'} {hoveredDropTarget ===
+          'Images'
+            ? 'ring-2 ring-red-500/50 bg-red-500/10'
+            : ''}"
           onclick={() => (selectedGroup = "Images")}
+          ondragover={(e) => handleDragOver(e, "Images")}
+          ondrop={(e) => handleDrop(e, "Images")}
+          ondragleave={handleDragLeave}
         >
           <span class="flex items-center gap-2">
             <svg
@@ -688,8 +671,13 @@
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           'Text'
             ? 'bg-red-500/10 text-red-500 font-bold'
-            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+            : 'text-zinc-400 hover:bg-[#2a2a2a]'} {hoveredDropTarget === 'Text'
+            ? 'ring-2 ring-red-500/50 bg-red-500/10'
+            : ''}"
           onclick={() => (selectedGroup = "Text")}
+          ondragover={(e) => handleDragOver(e, "Text")}
+          ondrop={(e) => handleDrop(e, "Text")}
+          ondragleave={handleDragLeave}
         >
           <span class="flex items-center gap-2">
             <svg
@@ -748,12 +736,15 @@
                 class="flex-1 text-left px-3 py-2 text-sm {selectedGroup ===
                 group
                   ? 'text-red-500 font-bold'
-                  : 'text-zinc-400'}"
+                  : 'text-zinc-400'} {hoveredDropTarget === group
+                  ? 'ring-2 ring-red-500/50 bg-red-500/10'
+                  : ''}"
                 onclick={() => {
                   selectedGroup = group;
                 }}
-                ondragover={handleDragOver}
+                ondragover={(e) => handleDragOver(e, group)}
                 ondrop={(e) => handleDrop(e, group)}
+                ondragleave={handleDragLeave}
               >
                 {group}
               </button>
@@ -993,6 +984,7 @@
               data-index={i}
               draggable="true"
               ondragstart={(e) => handleDragStart(e, item.id)}
+              ondragend={handleDragEnd}
             >
               <div class="flex items-start justify-between">
                 <div class="min-w-0 flex-1">
