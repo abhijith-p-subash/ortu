@@ -99,16 +99,27 @@ pub fn get_categories(app: AppHandle) -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub async fn paste_item(_app: AppHandle) -> Result<(), String> {
+    // Small delay to ensure the window has hidden and focus returned to previous app
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
     #[cfg(target_os = "macos")]
     {
         use std::process::Command;
-        // Small delay to ensure the window has hidden and focus returned to previous app
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
         let _ = Command::new("osascript")
             .arg("-e")
             .arg("tell application \"System Events\" to keystroke \"v\" using {command down}")
             .spawn();
     }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+        let _ = enigo.key(Key::Control, Direction::Press);
+        let _ = enigo.key(Key::Unicode('v'), Direction::Click);
+        let _ = enigo.key(Key::Control, Direction::Release);
+    }
+
     Ok(())
 }
 
