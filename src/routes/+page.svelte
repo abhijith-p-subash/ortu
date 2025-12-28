@@ -527,7 +527,8 @@
           >Navigation</span
         >
       </div>
-      <div class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+      <!-- Fixed All History Button -->
+      <div class="p-2 border-b border-[#333]">
         <button
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           null
@@ -537,10 +538,28 @@
             selectedGroup = null;
           }}
         >
-          All History
+          <span class="flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
+              ></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg
+            >
+            All History
+          </span>
         </button>
+      </div>
 
-        <div class="pt-4 pb-2 px-3">
+      <!-- Static Smart Groups Section -->
+      <div class="p-2 border-b border-[#333] space-y-1">
+        <div class="pb-2 px-3">
           <span
             class="text-[10px] font-bold uppercase tracking-widest text-zinc-600"
             >Smart Groups</span
@@ -637,14 +656,18 @@
             Text
           </span>
         </button>
+      </div>
 
-        <div class="pt-4 pb-2 px-3">
-          <span
-            class="text-[10px] font-bold uppercase tracking-widest text-zinc-600"
-            >Groups</span
-          >
-        </div>
+      <!-- Static Groups Header -->
+      <div class="pt-4 pb-2 px-4">
+        <span
+          class="text-[10px] font-bold uppercase tracking-widest text-zinc-600"
+          >Groups</span
+        >
+      </div>
 
+      <!-- Scrollable Groups List -->
+      <div class="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-1">
         {#each groups as group}
           <div
             class="group relative flex items-center rounded-md hover:bg-[#2a2a2a] transition-all {selectedGroup ===
