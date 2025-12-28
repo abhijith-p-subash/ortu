@@ -34,6 +34,10 @@
   let showAboutModal = $state(false);
   let currentPlatform = $state<string>("macos");
 
+  // Toast notification state
+  let showCopiedToast = $state(false);
+  let copiedToastTimer: number | null = null;
+
   // Detect platform
   onMount(async () => {
     try {
@@ -285,6 +289,14 @@
       // await invoke("close_window");
       console.log("Item copied to clipboard");
       await invoke("paste_item");
+
+      // Show copied toast
+      if (copiedToastTimer) clearTimeout(copiedToastTimer);
+      showCopiedToast = true;
+      copiedToastTimer = window.setTimeout(() => {
+        showCopiedToast = false;
+        copiedToastTimer = null;
+      }, 2000);
     } catch (err) {
       console.error("Failed to copy and paste: ", err);
     }
@@ -1987,6 +1999,31 @@
           </button>
         </div>
       </div>
+    </div>
+  {/if}
+
+  <!-- Copied Toast Notification -->
+  {#if showCopiedToast}
+    <div
+      class="fixed bottom-4 right-4 bg-[#1e1e1e] border border-green-500/50 rounded-xl shadow-2xl shadow-green-500/20 px-4 py-3 flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-300 z-50"
+    >
+      <div
+        class="flex items-center justify-center w-5 h-5 bg-green-500/20 rounded-full"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="3"
+          class="text-green-500"
+        >
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
+      <span class="text-sm font-semibold text-white">Copied!</span>
     </div>
   {/if}
 </div>
