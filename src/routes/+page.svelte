@@ -4,6 +4,7 @@
   import type { ClipboardItem } from "$lib/types";
   import { listen } from "@tauri-apps/api/event";
   import { save, open } from "@tauri-apps/plugin-dialog";
+  import { platform } from "@tauri-apps/plugin-os";
   import "../app.css";
 
   let history = $state<ClipboardItem[]>([]);
@@ -27,6 +28,29 @@
   let exportSelectedGroups = $state<string[]>([]);
   let importMode = $state<"merge" | "replace">("merge");
   let processingIO = $state(false);
+
+  // Help & About State
+  let showHelpModal = $state(false);
+  let showAboutModal = $state(false);
+  let currentPlatform = $state<string>("macos");
+
+  // Toast notification state
+  let showCopiedToast = $state(false);
+  let copiedToastTimer: number | null = null;
+
+  // Detect platform
+  onMount(async () => {
+    try {
+      currentPlatform = await platform();
+    } catch (e) {
+      console.error("Failed to detect platform:", e);
+    }
+  });
+
+  // OS-specific key labels
+  let modKey = $derived(currentPlatform === "macos" ? "Cmd" : "Ctrl");
+  let deleteKey = $derived(currentPlatform === "macos" ? "⌫" : "Backspace");
+  let altKey = $derived(currentPlatform === "macos" ? "Option" : "Alt");
 
   async function loadHistory() {
     try {
@@ -265,6 +289,14 @@
       // await invoke("close_window");
       console.log("Item copied to clipboard");
       await invoke("paste_item");
+
+      // Show copied toast
+      if (copiedToastTimer) clearTimeout(copiedToastTimer);
+      showCopiedToast = true;
+      copiedToastTimer = window.setTimeout(() => {
+        showCopiedToast = false;
+        copiedToastTimer = null;
+      }, 2000);
     } catch (err) {
       console.error("Failed to copy and paste: ", err);
     }
@@ -514,6 +546,50 @@
           ></path></svg
         >
         <span>Manage Groups</span>
+      </button>
+      <div class="w-px h-4 bg-[#333] mx-1"></div>
+      <button
+        onclick={() => (showHelpModal = true)}
+        class="p-1.5 hover:bg-[#2a2a2a] rounded-md transition-all text-zinc-400 hover:text-white"
+        title="Help"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          ><circle cx="12" cy="12" r="10"></circle><path
+            d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"
+          ></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg
+        >
+      </button>
+      <button
+        onclick={() => (showAboutModal = true)}
+        class="p-1.5 hover:bg-[#2a2a2a] rounded-md transition-all text-zinc-400 hover:text-white"
+        title="About"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          ><circle cx="12" cy="12" r="10"></circle><line
+            x1="12"
+            y1="16"
+            x2="12"
+            y2="12"
+          ></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg
+        >
       </button>
     </div>
   </header>
@@ -1515,6 +1591,439 @@
           </button>
         </div>
       </div>
+    </div>
+  {/if}
+
+  <!-- Help Modal -->
+  {#if showHelpModal}
+    <div
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onclick={(e) => {
+        if (e.target === e.currentTarget) showHelpModal = false;
+      }}
+    >
+      <div
+        class="w-full max-w-2xl bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+      >
+        <div
+          class="p-6 border-b border-[#333] flex items-center justify-between"
+        >
+          <div class="flex items-center gap-3">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              class="text-red-500"
+              ><circle cx="12" cy="12" r="10"></circle><path
+                d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"
+              ></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg
+            >
+            <h3 class="text-lg font-bold text-white">Help & Shortcuts</h3>
+          </div>
+          <button
+            onclick={() => (showHelpModal = false)}
+            class="text-zinc-500 hover:text-white transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              ><line x1="18" y1="6" x2="6" y2="18"></line><line
+                x1="6"
+                y1="6"
+                x2="18"
+                y2="18"
+              ></line></svg
+            >
+          </button>
+        </div>
+
+        <div
+          class="p-6 max-h-[70vh] overflow-y-auto custom-scrollbar space-y-6"
+        >
+          <!-- How to Open -->
+          <div>
+            <h4
+              class="text-sm font-bold text-red-500 mb-3 uppercase tracking-wider"
+            >
+              Opening Windows
+            </h4>
+            <div class="space-y-2 text-sm">
+              <div class="flex items-start gap-3 p-3 bg-[#252525] rounded-lg">
+                <div class="flex-shrink-0 w-32 text-zinc-400 font-mono text-xs">
+                  <kbd
+                    class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333]"
+                    >{altKey}</kbd
+                  >
+                  +
+                  <kbd
+                    class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333]"
+                    >V</kbd
+                  >
+                </div>
+                <div>
+                  <div class="text-white font-semibold">Quick Popup</div>
+                  <div class="text-zinc-500 text-xs">
+                    Opens the quick access popup window
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-start gap-3 p-3 bg-[#252525] rounded-lg">
+                <div class="flex-shrink-0 w-32 text-zinc-400 text-xs">
+                  Tray Icon
+                </div>
+                <div>
+                  <div class="text-white font-semibold">Main Window</div>
+                  <div class="text-zinc-500 text-xs">
+                    Click the tray icon to open the main window
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Navigation Shortcuts -->
+          <div>
+            <h4
+              class="text-sm font-bold text-red-500 mb-3 uppercase tracking-wider"
+            >
+              Navigation
+            </h4>
+            <div class="space-y-2 text-sm">
+              <div
+                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+              >
+                <span class="text-zinc-300">Navigate Down</span>
+                <kbd
+                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  >↓</kbd
+                >
+              </div>
+              <div
+                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+              >
+                <span class="text-zinc-300">Navigate Up</span>
+                <kbd
+                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  >↑</kbd
+                >
+              </div>
+              <div
+                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+              >
+                <span class="text-zinc-300">Close Window</span>
+                <kbd
+                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  >Esc</kbd
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Shortcuts -->
+          <div>
+            <h4
+              class="text-sm font-bold text-red-500 mb-3 uppercase tracking-wider"
+            >
+              Actions
+            </h4>
+            <div class="space-y-2 text-sm">
+              <div
+                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+              >
+                <span class="text-zinc-300">Copy & Paste Selected</span>
+                <kbd
+                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  >Enter</kbd
+                >
+              </div>
+              <div
+                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+              >
+                <span class="text-zinc-300">Delete Item</span>
+                <div class="flex items-center gap-1">
+                  <kbd
+                    class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                    >Delete</kbd
+                  >
+                  /
+                  <kbd
+                    class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                    >{modKey}+{deleteKey}</kbd
+                  >
+                </div>
+              </div>
+              <div
+                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+              >
+                <span class="text-zinc-300">Pin/Unpin Item</span>
+                <kbd
+                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  >{modKey}+P</kbd
+                >
+              </div>
+              <div
+                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+              >
+                <span class="text-zinc-300">Categorize Item</span>
+                <kbd
+                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  >{modKey}+C</kbd
+                >
+              </div>
+              <div
+                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+              >
+                <span class="text-zinc-300">Manage Groups</span>
+                <kbd
+                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  >{modKey}+G</kbd
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- Features -->
+          <div>
+            <h4
+              class="text-sm font-bold text-red-500 mb-3 uppercase tracking-wider"
+            >
+              Features
+            </h4>
+            <ul class="space-y-2 text-sm text-zinc-300">
+              <li class="flex items-start gap-2">
+                <span class="text-red-500 mt-1">•</span>
+                <span
+                  ><strong class="text-white">Smart Groups:</strong> Automatically
+                  categorizes URLs, Images, and Text</span
+                >
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-red-500 mt-1">•</span>
+                <span
+                  ><strong class="text-white">Custom Groups:</strong> Create and
+                  organize items into custom categories</span
+                >
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-red-500 mt-1">•</span>
+                <span
+                  ><strong class="text-white">Pinned Items:</strong> Pin important
+                  items to keep them permanently</span
+                >
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-red-500 mt-1">•</span>
+                <span
+                  ><strong class="text-white">Search:</strong> Quickly find items
+                  with real-time search</span
+                >
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-red-500 mt-1">•</span>
+                <span
+                  ><strong class="text-white">Export/Import:</strong> Backup and
+                  restore your clipboard history</span
+                >
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-red-500 mt-1">•</span>
+                <span
+                  ><strong class="text-white">Privacy:</strong> All data is stored
+                  locally on your machine</span
+                >
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="p-4 border-t border-[#333] flex justify-end">
+          <button
+            class="px-6 py-2 bg-red-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all"
+            onclick={() => (showHelpModal = false)}
+          >
+            Got it!
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- About Modal -->
+  {#if showAboutModal}
+    <div
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onclick={(e) => {
+        if (e.target === e.currentTarget) showAboutModal = false;
+      }}
+    >
+      <div
+        class="w-full max-w-md bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+      >
+        <div
+          class="p-6 border-b border-[#333] flex items-center justify-between"
+        >
+          <div class="flex items-center gap-3">
+            <div
+              class="w-10 h-10 rounded-full flex items-center justify-center shadow-lg shadow-red-500/20"
+            >
+              <img src="/logo.png" alt="Ortu" class="w-8 h-8" />
+            </div>
+            <div>
+              <h3 class="text-lg font-bold text-white">Ortu</h3>
+              <p class="text-xs text-zinc-500">Clipboard Manager</p>
+            </div>
+          </div>
+          <button
+            onclick={() => (showAboutModal = false)}
+            class="text-zinc-500 hover:text-white transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              ><line x1="18" y1="6" x2="6" y2="18"></line><line
+                x1="6"
+                y1="6"
+                x2="18"
+                y2="18"
+              ></line></svg
+            >
+          </button>
+        </div>
+
+        <div class="p-6 space-y-6">
+          <div class="text-center space-y-2">
+            <div class="text-2xl font-bold text-white">Version 1.0.0</div>
+            <p class="text-sm text-zinc-400">
+              A powerful, privacy-focused clipboard manager for macOS
+            </p>
+          </div>
+
+          <div class="space-y-4">
+            <div class="p-4 bg-[#252525] rounded-xl">
+              <div class="text-xs text-zinc-500 uppercase tracking-wider mb-2">
+                Developer
+              </div>
+              <div class="text-sm text-white font-semibold">
+                Abhijith P Subash
+              </div>
+            </div>
+
+            <a
+              href="https://www.linkedin.com/in/abhijith-p-subash-the-engineer/"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="block p-4 bg-[#252525] hover:bg-[#2a2a2a] rounded-xl transition-all group"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    class="text-[#0A66C2]"
+                  >
+                    <path
+                      d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"
+                    />
+                  </svg>
+                  <div>
+                    <div class="text-sm text-white font-semibold">
+                      Connect on LinkedIn
+                    </div>
+                    <div class="text-xs text-zinc-500">
+                      @abhijith-p-subash-the-engineer
+                    </div>
+                  </div>
+                </div>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  class="text-zinc-600 group-hover:text-zinc-400 transition-colors"
+                >
+                  <path
+                    d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
+                  ></path>
+                  <polyline points="15 3 21 3 21 9"></polyline>
+                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+              </div>
+            </a>
+
+            <div
+              class="p-4 bg-gradient-to-br from-red-500/10 to-red-500/5 rounded-xl border border-red-500/20"
+            >
+              <div class="text-xs text-red-400 uppercase tracking-wider mb-2">
+                Privacy First
+              </div>
+              <p class="text-xs text-zinc-400">
+                All your clipboard data is stored locally on your device. No
+                cloud sync, no tracking, no external servers.
+              </p>
+            </div>
+          </div>
+
+          <div
+            class="pt-4 border-t border-[#333] text-center text-xs text-zinc-500"
+          >
+            © 2025 Ortu. All rights reserved.
+          </div>
+        </div>
+
+        <div class="p-4 border-t border-[#333] flex justify-end">
+          <button
+            class="px-6 py-2 bg-red-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all"
+            onclick={() => (showAboutModal = false)}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Copied Toast Notification -->
+  {#if showCopiedToast}
+    <div
+      class="fixed bottom-4 right-4 bg-[#1e1e1e] border border-green-500/50 rounded-xl shadow-2xl shadow-green-500/20 px-4 py-3 flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-300 z-50"
+    >
+      <div
+        class="flex items-center justify-center w-5 h-5 bg-green-500/20 rounded-full"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="3"
+          class="text-green-500"
+        >
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
+      <span class="text-sm font-semibold text-white">Copied!</span>
     </div>
   {/if}
 </div>
