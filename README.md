@@ -4,8 +4,6 @@
 
 **Ortu** is a minimalist, efficient, and open-source clipboard manager built with **Tauri**, **Rust**, and **SvelteKit**. Designed for speed and distraction-free productivity, Ortu stays out of your way until you need it.
 
-![Main Window Placeholder](https://via.placeholder.com/800x450?text=Ortu+Main+Window)
-
 ## 📋 Features
 
 - **Clipboard History**: Automatically tracks text and image copies.
