@@ -1,5 +1,38 @@
 use crate::db::{ClipboardDB, ClipboardItem};
+use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
+
+fn validate_path(path_str: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(path_str);
+    if !path.is_absolute() {
+        return Err("Path must be absolute".to_string());
+    }
+
+    // Basic protection against sensitive system paths
+    let p_str = path.to_string_lossy();
+    let dangerous_prefixes = [
+        "/etc",
+        "/var",
+        "/bin",
+        "/sbin",
+        "/lib",
+        "/usr/bin",
+        "/usr/sbin",
+        "C:\\Windows",
+        "C:\\Program Files",
+        "C:\\Users\\Public",
+    ];
+
+    for prefix in dangerous_prefixes {
+        if p_str.starts_with(prefix) {
+            return Err(
+                "Access to system directories is restricted for security reasons".to_string(),
+            );
+        }
+    }
+
+    Ok(path)
+}
 
 #[tauri::command]
 pub fn get_history(app: AppHandle, search: Option<String>) -> Result<Vec<ClipboardItem>, String> {
@@ -60,15 +93,17 @@ pub fn rename_group(app: AppHandle, old_name: String, new_name: String) -> Resul
 
 #[tauri::command]
 pub async fn export_group(app: AppHandle, name: String, path: String) -> Result<(), String> {
+    let validated_path = validate_path(&path)?;
     let db = app.state::<ClipboardDB>();
-    db.export_group(name, std::path::PathBuf::from(path))
+    db.export_group(name, validated_path)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn import_group(app: AppHandle, name: String, path: String) -> Result<(), String> {
+    let validated_path = validate_path(&path)?;
     let db = app.state::<ClipboardDB>();
-    db.import_group(name, std::path::PathBuf::from(path))
+    db.import_group(name, validated_path)
         .map_err(|e| e.to_string())
 }
 
@@ -78,15 +113,17 @@ pub async fn backup_data(
     path: String,
     groups: Option<Vec<String>>,
 ) -> Result<(), String> {
+    let validated_path = validate_path(&path)?;
     let db = app.state::<ClipboardDB>();
     let json = db.get_all_data_json(groups).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
+    std::fs::write(validated_path, json).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn restore_data(app: AppHandle, path: String, mode: String) -> Result<(), String> {
+    let validated_path = validate_path(&path)?;
     let db = app.state::<ClipboardDB>();
-    let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let json = std::fs::read_to_string(validated_path).map_err(|e| e.to_string())?;
     db.restore_from_json(&json, &mode)
         .map_err(|e| e.to_string())
 }
@@ -125,9 +162,9 @@ pub async fn paste_item(_app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn export_all_txt(app: AppHandle, path: String) -> Result<(), String> {
+    let validated_path = validate_path(&path)?;
     let db = app.state::<ClipboardDB>();
-    db.export_all_txt(std::path::PathBuf::from(path))
-        .map_err(|e| e.to_string())
+    db.export_all_txt(validated_path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

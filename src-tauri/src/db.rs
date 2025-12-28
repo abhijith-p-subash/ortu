@@ -320,28 +320,32 @@ impl ClipboardDB {
 
         // Fetch groups for these items
         if !item_ids.is_empty() {
-            // Create a placeholder string like "?, ?, ?"
-            let placeholders: Vec<String> = item_ids.iter().map(|_| "?".to_string()).collect();
-            let sql = format!(
-                "SELECT ig.item_id, g.name 
-                 FROM item_groups ig
-                 JOIN groups g ON ig.group_id = g.id
-                 WHERE ig.item_id IN ({})",
-                placeholders.join(",")
-            );
-
-            let mut stmt = conn.prepare(&sql)?;
-            // Convert ids to reference types rusqlite expects
-            let params = rusqlite::params_from_iter(item_ids.iter());
-
-            let mut group_rows = stmt.query(params)?;
-
+            // SQLite has a limit on the number of variables (usually 999).
+            // For larger sets, we can use a temporary table or chunk the requests.
+            // Since this is for a UI list (limited to 100), we are safe for now,
+            // but for backup/restore we need to be careful.
+            // Let's implement chunking as a safety measure.
             let mut groups_map: HashMap<i64, Vec<String>> = HashMap::new();
 
-            while let Some(row) = group_rows.next()? {
-                let item_id: i64 = row.get(0)?;
-                let group_name: String = row.get(1)?;
-                groups_map.entry(item_id).or_default().push(group_name);
+            for chunk in item_ids.chunks(900) {
+                let placeholders: Vec<String> = chunk.iter().map(|_| "?".to_string()).collect();
+                let sql = format!(
+                    "SELECT ig.item_id, g.name 
+                     FROM item_groups ig
+                     JOIN groups g ON ig.group_id = g.id
+                     WHERE ig.item_id IN ({})",
+                    placeholders.join(",")
+                );
+
+                let mut stmt = conn.prepare(&sql)?;
+                let params = rusqlite::params_from_iter(chunk.iter());
+                let mut group_rows = stmt.query(params)?;
+
+                while let Some(row) = group_rows.next()? {
+                    let item_id: i64 = row.get(0)?;
+                    let group_name: String = row.get(1)?;
+                    groups_map.entry(item_id).or_default().push(group_name);
+                }
             }
 
             for item in &mut items {
