@@ -185,15 +185,15 @@ pub fn start_listener(app: AppHandle) {
                                 }
                             }
 
-                            println!(
-                                "📋 Saving clipboard: {} chars, category: {:?}",
-                                text.len(),
-                                category
-                            );
+                            // println!(
+                            //     "📋 Saving clipboard: {} chars, category: {:?}",
+                            //     text.len(),
+                            //     category
+                            // );
                             if let Err(e) = db.insert_item(text.clone(), category.clone()) {
                                 eprintln!("❌ Failed to save clipboard item: {}", e);
                             } else {
-                                println!("✅ Clipboard saved successfully!");
+                                // println!("✅ Clipboard saved successfully!");
                                 // Emit event to notify frontend of new clipboard item
                                 let _ = app.emit("clipboard-updated", ());
                             }
