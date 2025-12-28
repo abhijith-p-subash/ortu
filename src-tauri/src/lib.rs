@@ -9,6 +9,7 @@ use std::time::Duration;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::Manager;
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 
 #[cfg(target_os = "macos")]
@@ -21,6 +22,10 @@ use objc::{msg_send, sel, sel_impl};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--hidden"]),
+        ))
         .setup(|app| {
             // ---------------- DB INIT ----------------
             let db = ClipboardDB::new(app.handle())?;
@@ -107,6 +112,9 @@ pub fn run() {
                     })
                     .build(),
             )?;
+
+            // ---------------- AUTOSTART ----------------
+            let _ = app.autolaunch().enable();
 
             Ok(())
         })

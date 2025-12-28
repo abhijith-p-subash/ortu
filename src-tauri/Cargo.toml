@@ -30,6 +30,7 @@ lazy_static = "1.5.0"
 tauri-plugin-global-shortcut = "2.3.1"
 tauri-plugin-positioner = "2.3.1"
 tauri-plugin-dialog = "2"
+tauri-plugin-autostart = "2"
 tokio = { version = "1", features = ["full"] }
 enigo = "0.2"
 

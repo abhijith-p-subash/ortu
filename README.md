@@ -12,7 +12,8 @@
 - **Pin Items**: Mark important clips as permanent to prevent them from being pruned.
 - **Smart Grouping**: Organize your clips into custom groups (e.g., "Work", "Snippets", "Passwords").
 - **Search & Filter**: Find anything instantly with keyword search or filters (e.g., `group:Work`).
-- **Stealth Popup**: A floating popup that opens without stealing focus, allowing you to paste directly into your active window.
+- **Direct Paste**: Selected items are pasted directly into your active window.
+- **Autostart**: Optionally starts with your OS to ensure clipboard monitoring is always active.
 - **Data Portability**: Full support for Backup/Restore (JSON) and Exporting groups or all history (TXT).
 - **Lightweight**: Minimal memory footprint thanks to the Rust backend and native SQLite storage.
 
