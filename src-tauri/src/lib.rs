@@ -114,7 +114,16 @@ pub fn run() {
             )?;
 
             // ---------------- AUTOSTART ----------------
-            let _ = app.autolaunch().enable();
+            let autostart_manager = app.autolaunch();
+            if !autostart_manager.is_enabled().unwrap_or(false) {
+                println!("Autostart not enabled, attempting to enable...");
+                match autostart_manager.enable() {
+                    Ok(_) => println!("Autostart enabled successfully."),
+                    Err(e) => eprintln!("Failed to enable autostart: {}", e),
+                }
+            } else {
+                println!("Autostart is already enabled.");
+            }
 
             Ok(())
         })
