@@ -26,7 +26,30 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
         ))
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let _ = app
+                .get_webview_window("main")
+                .expect("no main window")
+                .set_focus();
+        }))
         .setup(|app| {
+            // ---------------- ARGUMENT CHECK (AUTOSTART VS MANUAL) ----------------
+            let args: Vec<String> = std::env::args().collect();
+            let mut is_hidden = false;
+            for arg in args {
+                if arg == "--hidden" {
+                    is_hidden = true;
+                    break;
+                }
+            }
+
+            if !is_hidden {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+
             // ---------------- DB INIT ----------------
             let db = ClipboardDB::new(app.handle())?;
             db.clear_ephemeral_on_start()?;
