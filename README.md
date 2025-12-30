@@ -87,6 +87,22 @@ npm run tauri build
 
 ---
 
+## 🔖 Versioning
+
+To update the application version across all configuration files (`package.json`, `tauri.conf.json`, `Cargo.toml`), run:
+
+```bash
+npm run version-up <new_version>
+```
+
+**Example:**
+
+```bash
+npm run version-up 1.0.2
+```
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Whether it's a bug report, a feature request, or a pull request, we appreciate your help.

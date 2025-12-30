@@ -5,6 +5,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { save, open } from "@tauri-apps/plugin-dialog";
   import { platform } from "@tauri-apps/plugin-os";
+  import { getVersion } from "@tauri-apps/api/app";
   import "../app.css";
 
   let history = $state<ClipboardItem[]>([]);
@@ -21,6 +22,7 @@
   let editingGroup = $state<string | null>(null);
   let editGroupName = $state("");
   let expandedItems = $state<number[]>([]);
+  let appVersion = $state("1.0.0");
 
   // Import/Export State
   let showExportModal = $state(false);
@@ -42,8 +44,9 @@
   onMount(async () => {
     try {
       currentPlatform = await platform();
+      appVersion = await getVersion();
     } catch (e) {
-      console.error("Failed to detect platform:", e);
+      console.error("Failed to detect platform/version:", e);
     }
   });
 
@@ -1906,7 +1909,9 @@
 
         <div class="p-6 space-y-6">
           <div class="text-center space-y-2">
-            <div class="text-2xl font-bold text-white">Version 1.0.1</div>
+            <div class="text-2xl font-bold text-white">
+              Version {appVersion}
+            </div>
             <p class="text-sm text-zinc-400">
               A powerful, privacy-focused clipboard manager for macOS
             </p>
