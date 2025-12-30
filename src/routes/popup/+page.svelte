@@ -379,14 +379,39 @@
               stroke-width="2.5"><path d="M12 5v14M5 12h14" /></svg
             >
           </button>
-          <span
+          <button
+            onclick={(e) => {
+              e.stopPropagation();
+              deleteItem(item);
+            }}
+            class="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#444] rounded transition-all"
+            title="Delete"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="w-3 h-3 text-zinc-500"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M3 6h18" />
+              <path d="M8 6V4h8v2" />
+              <path d="M6 6l1 14h10l1-14" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+            </svg>
+          </button>
+          <!-- <span
             class="text-[10px] text-zinc-600 font-mono opacity-0 group-hover:opacity-100"
           >
             {new Date(item.created_at).toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
             })}
-          </span>
+          </span> -->
         </div>
       </div>
     {/each}
