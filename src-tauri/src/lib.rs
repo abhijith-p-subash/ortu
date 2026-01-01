@@ -23,20 +23,39 @@ use objc::{msg_send, sel, sel_impl};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
+            #[cfg(target_os = "macos")]
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            #[cfg(not(target_os = "macos"))]
+            tauri_plugin_autostart::Launcher::Startup,
+            #[cfg(target_os = "macos")]
             Some(vec!["--hidden"]),
+            #[cfg(not(target_os = "macos"))]
+            None,
         ))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            let _ = app
-                .get_webview_window("main")
-                .expect("no main window")
-                .set_focus();
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
         }))
+        // ---------------- CRITICAL FIX: Move Global Shortcut to Builder Chain (Safe Init) ----------------
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_shortcuts(vec![Shortcut::new(Some(Modifiers::ALT), Code::KeyV)])
+                .expect("Failed to register global shortcut")
+                .with_handler(|app, s, e| {
+                    if e.state == ShortcutState::Pressed && s.matches(Modifiers::ALT, Code::KeyV) {
+                        toggle_popup(app);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             // ---------------- ARGUMENT CHECK (AUTOSTART VS MANUAL) ----------------
             let args: Vec<String> = std::env::args().collect();
             let mut is_hidden = false;
-            for arg in args {
+
+            // Defensive parsing of arguments
+            for arg in &args {
                 if arg == "--hidden" {
                     is_hidden = true;
                     break;
@@ -60,8 +79,14 @@ pub fn run() {
             let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
+            // ---------------- CRITICAL FIX: Safe Tray Icon Unwrap ----------------
+            let icon = app
+                .default_window_icon()
+                .cloned()
+                .unwrap_or_else(|| tauri::image::Image::new(&[], 0, 0));
+
             TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(icon)
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),
@@ -121,31 +146,23 @@ pub fn run() {
                 }
             });
 
-            // ---------------- GLOBAL SHORTCUT (ALT + V) ----------------
-            let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::KeyV);
-            app.handle().plugin(
-                tauri_plugin_global_shortcut::Builder::new()
-                    .with_shortcuts(vec![shortcut])?
-                    .with_handler(|app, s, e| {
-                        if e.state == ShortcutState::Pressed
-                            && s.matches(Modifiers::ALT, Code::KeyV)
-                        {
-                            toggle_popup(app);
-                        }
-                    })
-                    .build(),
-            )?;
+            // Global shortcut plugin moved to builder chain.
 
             // ---------------- AUTOSTART ----------------
+            // Only enable autostart if logic requires it, avoid aggressive re-enabling which might corrupt registry
             let autostart_manager = app.autolaunch();
-            if !autostart_manager.is_enabled().unwrap_or(false) {
-                println!("Autostart not enabled, attempting to enable...");
-                match autostart_manager.enable() {
-                    Ok(_) => println!("Autostart enabled successfully."),
-                    Err(e) => eprintln!("Failed to enable autostart: {}", e),
+            if let Ok(enabled) = autostart_manager.is_enabled() {
+                if !enabled {
+                    // Optional: You might want to remove this auto-enable if the user hasn't opted in settings
+                    // For now, we keep it but with a check
+                    println!("Autostart not enabled. Use app settings to enable.");
+                    // match autostart_manager.enable() {
+                    //    Ok(_) => println!("Autostart enabled successfully."),
+                    //    Err(e) => eprintln!("Failed to enable autostart: {}", e),
+                    // }
                 }
             } else {
-                println!("Autostart is already enabled.");
+                eprintln!("Failed to check autostart status");
             }
 
             Ok(())
