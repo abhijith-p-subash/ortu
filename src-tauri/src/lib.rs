@@ -23,14 +23,8 @@ use objc::{msg_send, sel, sel_impl};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
-            #[cfg(target_os = "macos")]
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            #[cfg(not(target_os = "macos"))]
-            tauri_plugin_autostart::Launcher::Startup,
-            #[cfg(target_os = "macos")]
             Some(vec!["--hidden"]),
-            #[cfg(not(target_os = "macos"))]
-            None,
         ))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
@@ -153,13 +147,11 @@ pub fn run() {
             let autostart_manager = app.autolaunch();
             if let Ok(enabled) = autostart_manager.is_enabled() {
                 if !enabled {
-                    // Optional: You might want to remove this auto-enable if the user hasn't opted in settings
-                    // For now, we keep it but with a check
-                    println!("Autostart not enabled. Use app settings to enable.");
-                    // match autostart_manager.enable() {
-                    //    Ok(_) => println!("Autostart enabled successfully."),
-                    //    Err(e) => eprintln!("Failed to enable autostart: {}", e),
-                    // }
+                    println!("Autostart not enabled. Enabling...");
+                    match autostart_manager.enable() {
+                        Ok(_) => println!("Autostart enabled successfully."),
+                        Err(e) => eprintln!("Failed to enable autostart: {}", e),
+                    }
                 }
             } else {
                 eprintln!("Failed to check autostart status");
