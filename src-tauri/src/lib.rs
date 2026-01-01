@@ -26,7 +26,43 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
         ))
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+        }))
+        // ---------------- CRITICAL FIX: Move Global Shortcut to Builder Chain (Safe Init) ----------------
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_shortcuts(vec![Shortcut::new(Some(Modifiers::ALT), Code::KeyV)])
+                .expect("Failed to register global shortcut")
+                .with_handler(|app, s, e| {
+                    if e.state == ShortcutState::Pressed && s.matches(Modifiers::ALT, Code::KeyV) {
+                        toggle_popup(app);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
+            // ---------------- ARGUMENT CHECK (AUTOSTART VS MANUAL) ----------------
+            let args: Vec<String> = std::env::args().collect();
+            let mut is_hidden = false;
+
+            // Defensive parsing of arguments
+            for arg in &args {
+                if arg == "--hidden" {
+                    is_hidden = true;
+                    break;
+                }
+            }
+
+            if !is_hidden {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+
             // ---------------- DB INIT ----------------
             let db = ClipboardDB::new(app.handle())?;
             db.clear_ephemeral_on_start()?;
@@ -37,8 +73,14 @@ pub fn run() {
             let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
+            // ---------------- CRITICAL FIX: Safe Tray Icon Unwrap ----------------
+            let icon = app
+                .default_window_icon()
+                .cloned()
+                .unwrap_or_else(|| tauri::image::Image::new(&[], 0, 0));
+
             TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(icon)
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),
@@ -98,31 +140,21 @@ pub fn run() {
                 }
             });
 
-            // ---------------- GLOBAL SHORTCUT (ALT + V) ----------------
-            let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::KeyV);
-            app.handle().plugin(
-                tauri_plugin_global_shortcut::Builder::new()
-                    .with_shortcuts(vec![shortcut])?
-                    .with_handler(|app, s, e| {
-                        if e.state == ShortcutState::Pressed
-                            && s.matches(Modifiers::ALT, Code::KeyV)
-                        {
-                            toggle_popup(app);
-                        }
-                    })
-                    .build(),
-            )?;
+            // Global shortcut plugin moved to builder chain.
 
             // ---------------- AUTOSTART ----------------
+            // Only enable autostart if logic requires it, avoid aggressive re-enabling which might corrupt registry
             let autostart_manager = app.autolaunch();
-            if !autostart_manager.is_enabled().unwrap_or(false) {
-                println!("Autostart not enabled, attempting to enable...");
-                match autostart_manager.enable() {
-                    Ok(_) => println!("Autostart enabled successfully."),
-                    Err(e) => eprintln!("Failed to enable autostart: {}", e),
+            if let Ok(enabled) = autostart_manager.is_enabled() {
+                if !enabled {
+                    println!("Autostart not enabled. Enabling...");
+                    match autostart_manager.enable() {
+                        Ok(_) => println!("Autostart enabled successfully."),
+                        Err(e) => eprintln!("Failed to enable autostart: {}", e),
+                    }
                 }
             } else {
-                println!("Autostart is already enabled.");
+                eprintln!("Failed to check autostart status");
             }
 
             Ok(())
