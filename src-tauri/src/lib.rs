@@ -22,6 +22,7 @@ use objc::{msg_send, sel, sel_impl};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
@@ -31,11 +32,11 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
-        // ---------------- CRITICAL FIX: Move Global Shortcut to Builder Chain (Safe Init) ----------------
+        // ---------------- CRITICAL FIX: Safe Global Shortcut Init ----------------
+        // Initialize the plugin without shortcuts to prevent startup panics.
+        // We register shortcuts safely in the setup hook.
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcuts(vec![Shortcut::new(Some(Modifiers::ALT), Code::KeyV)])
-                .expect("Failed to register global shortcut")
                 .with_handler(|app, s, e| {
                     if e.state == ShortcutState::Pressed && s.matches(Modifiers::ALT, Code::KeyV) {
                         toggle_popup(app);
@@ -44,6 +45,16 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            // ---------------- SAFE GLOBAL SHORTCUT REGISTRATION ----------------
+            {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::KeyV);
+                if let Err(e) = app.global_shortcut().register(shortcut) {
+                    log::error!("Failed to register global shortcut: {}", e);
+                    eprintln!("Failed to register global shortcut: {}", e);
+                }
+            }
+
             // ---------------- ARGUMENT CHECK (AUTOSTART VS MANUAL) ----------------
             let args: Vec<String> = std::env::args().collect();
             let mut is_hidden = false;
