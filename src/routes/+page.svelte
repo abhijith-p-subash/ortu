@@ -57,14 +57,8 @@
 
   async function loadHistory() {
     try {
-      let prefix = "category:";
-      // Check if it's a known smart group
-      if (["URL", "Images", "Text"].includes(selectedGroup || "")) {
-        prefix = "group:";
-      }
-
       const search = selectedGroup
-        ? `${prefix}${selectedGroup} ${searchQuery}`
+        ? `category:${selectedGroup} ${searchQuery}`
         : searchQuery;
       const data = (await invoke("get_history", {
         search: search || null,
@@ -1072,7 +1066,11 @@
                   {#if item.groups && item.groups.length > 0}
                     {#each item.groups as group}
                       <span
-                        class="flex items-center gap-1 text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20"
+                        class="flex items-center gap-1 text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20 cursor-pointer"
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          selectedGroup = group;
+                        }}
                       >
                         {group}
                         {#if selectedGroup === group}
@@ -1091,7 +1089,11 @@
                     {/each}
                   {:else if item.category}
                     <span
-                      class="text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20"
+                      class="text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20 cursor-pointer"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        selectedGroup = item.category;
+                      }}
                     >
                       {item.category}
                     </span>

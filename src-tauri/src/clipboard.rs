@@ -7,6 +7,12 @@ use tauri::AppHandle;
 use tauri::Emitter;
 use tauri::Manager;
 
+fn push_group(groups: &mut Vec<String>, name: &str) {
+    if !groups.iter().any(|g| g == name) {
+        groups.push(name.to_string());
+    }
+}
+
 pub fn start_listener(app: AppHandle) {
     thread::spawn(move || {
         let mut clipboard = match Clipboard::new() {
@@ -86,6 +92,15 @@ pub fn start_listener(app: AppHandle) {
 
         // --- Web / URLs ---
         let url_re = Regex::new(r"(?i)\b(https?|ftp)://[^\s/$.?#].[^\s]*").unwrap();
+        let email_re = Regex::new(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b").unwrap();
+        let json_re = Regex::new(r"(?s)^\s*[\{\[][\s\S]*[\}\]]\s*$").unwrap();
+        let xml_re = Regex::new(r"(?i)^\s*<\?xml|^\s*<([a-z][\w-]*)(?:\s[^>]*)?>").unwrap();
+        let sql_re =
+            Regex::new(r"(?i)^\s*(select|insert|update|delete|create|alter|drop)\b").unwrap();
+        let windows_path_re = Regex::new(r"^[a-zA-Z]:\\").unwrap();
+        let unix_path_re = Regex::new(r"^(/[^/]+)+/?$").unwrap();
+        let code_block_re = Regex::new(r"(?s)```[\s\S]*```").unwrap();
+        let shell_op_re = Regex::new(r"(\|\||&&|>>|<<|;\s)").unwrap();
 
         // Add more as needed
 
@@ -106,23 +121,31 @@ pub fn start_listener(app: AppHandle) {
                             continue;
                         }
 
-                        let mut category = if docker_re.is_match(&text) {
-                            Some("Docker".into())
-                        } else if kubectl_re.is_match(&text) || helm_re.is_match(&text) {
-                            Some("Kubernetes".into())
-                        } else if terraform_re.is_match(&text) || ansible_re.is_match(&text) {
-                            Some("IaC".into())
-                        } else if aws_re.is_match(&text)
+                        let mut groups: Vec<String> = Vec::new();
+                        if docker_re.is_match(&text) {
+                            push_group(&mut groups, "Docker");
+                            push_group(&mut groups, "DevOps");
+                        }
+                        if kubectl_re.is_match(&text) || helm_re.is_match(&text) {
+                            push_group(&mut groups, "Kubernetes");
+                            push_group(&mut groups, "DevOps");
+                        }
+                        if terraform_re.is_match(&text) || ansible_re.is_match(&text) {
+                            push_group(&mut groups, "IaC");
+                            push_group(&mut groups, "DevOps");
+                        }
+                        if aws_re.is_match(&text)
                             || gcloud_re.is_match(&text)
                             || az_re.is_match(&text)
                         {
-                            Some("Cloud CLI".into())
-                        } else if git_re.is_match(&text)
-                            || gh_re.is_match(&text)
-                            || svn_re.is_match(&text)
+                            push_group(&mut groups, "Cloud CLI");
+                            push_group(&mut groups, "DevOps");
+                        }
+                        if git_re.is_match(&text) || gh_re.is_match(&text) || svn_re.is_match(&text)
                         {
-                            Some("Version Control".into())
-                        } else if npm_re.is_match(&text)
+                            push_group(&mut groups, "Version Control");
+                        }
+                        if npm_re.is_match(&text)
                             || npx_re.is_match(&text)
                             || yarn_re.is_match(&text)
                             || pnpm_re.is_match(&text)
@@ -134,8 +157,9 @@ pub fn start_listener(app: AppHandle) {
                             || apt_re.is_match(&text)
                             || yum_re.is_match(&text)
                         {
-                            Some("Package Management".into())
-                        } else if node_re.is_match(&text)
+                            push_group(&mut groups, "Package Management");
+                        }
+                        if node_re.is_match(&text)
                             || python_re.is_match(&text)
                             || java_re.is_match(&text)
                             || mvn_re.is_match(&text)
@@ -143,58 +167,78 @@ pub fn start_listener(app: AppHandle) {
                             || dotnet_re.is_match(&text)
                             || rustc_re.is_match(&text)
                         {
-                            Some("Runtime / Build".into())
-                        } else if bash_re.is_match(&text)
+                            push_group(&mut groups, "Runtime / Build");
+                        }
+                        if bash_re.is_match(&text)
                             || zsh_re.is_match(&text)
                             || powershell_re.is_match(&text)
+                            || shell_op_re.is_match(&text)
                         {
-                            Some("Shell / OS".into())
-                        } else if curl_re.is_match(&text)
+                            push_group(&mut groups, "Shell / OS");
+                        }
+                        if curl_re.is_match(&text)
                             || wget_re.is_match(&text)
                             || httpie_re.is_match(&text)
                             || ping_re.is_match(&text)
                             || netstat_re.is_match(&text)
                             || lsof_re.is_match(&text)
                         {
-                            Some("Networking".into())
-                        } else if psql_re.is_match(&text)
+                            push_group(&mut groups, "Networking");
+                        }
+                        if psql_re.is_match(&text)
                             || mysql_re.is_match(&text)
                             || redis_re.is_match(&text)
                             || mongo_re.is_match(&text)
                             || sqlite_re.is_match(&text)
+                            || sql_re.is_match(&text)
                         {
-                            Some("Database".into())
-                        } else if make_re.is_match(&text)
+                            push_group(&mut groups, "Database");
+                        }
+                        if make_re.is_match(&text)
                             || cmake_re.is_match(&text)
                             || bazel_re.is_match(&text)
                             || github_actions_re.is_match(&text)
                         {
-                            Some("CI / Build".into())
-                        } else if url_re.is_match(&text) {
-                            Some("URL".into())
-                        } else {
-                            None
-                        };
+                            push_group(&mut groups, "CI / Build");
+                        }
+                        if url_re.is_match(&text) {
+                            push_group(&mut groups, "URL");
+                            push_group(&mut groups, "Web");
+                        }
+                        if email_re.is_match(&text) {
+                            push_group(&mut groups, "Email");
+                        }
+                        if json_re.is_match(&text) {
+                            push_group(&mut groups, "JSON");
+                        }
+                        if xml_re.is_match(&text) {
+                            push_group(&mut groups, "XML");
+                        }
+                        if windows_path_re.is_match(&text) || unix_path_re.is_match(&text) {
+                            push_group(&mut groups, "Path");
+                        }
+                        if code_block_re.is_match(&text)
+                            || text.contains("function ")
+                            || text.contains("class ")
+                            || text.contains("=>")
+                        {
+                            push_group(&mut groups, "Code Snippet");
+                        }
+                        if groups.is_empty() {
+                            push_group(&mut groups, "Text");
+                        }
 
                         // Access DB state
                         if let Some(db) = app.try_state::<ClipboardDB>() {
-                            // If no regex match, try similarity match
-                            if category.is_none() {
+                            if groups.len() == 1 && groups[0] == "Text" {
                                 if let Ok(Some(sim_cat)) = db.find_similar_category(&text) {
-                                    category = Some(sim_cat);
+                                    push_group(&mut groups, &sim_cat);
                                 }
                             }
 
-                            // println!(
-                            //     "📋 Saving clipboard: {} chars, category: {:?}",
-                            //     text.len(),
-                            //     category
-                            // );
-                            if let Err(e) = db.insert_item(text.clone(), category.clone()) {
+                            if let Err(e) = db.insert_auto_grouped_item(text.clone(), groups) {
                                 eprintln!("❌ Failed to save clipboard item: {}", e);
                             } else {
-                                // println!("✅ Clipboard saved successfully!");
-                                // Emit event to notify frontend of new clipboard item
                                 let _ = app.emit("clipboard-updated", ());
                             }
                         }

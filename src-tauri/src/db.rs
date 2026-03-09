@@ -127,6 +127,14 @@ impl ClipboardDB {
             "CREATE INDEX IF NOT EXISTS idx_created_at ON history(created_at DESC)",
             [],
         )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_item_groups_item_id ON item_groups(item_id)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_item_groups_group_id ON item_groups(group_id)",
+            [],
+        )?;
 
         Ok(ClipboardDB {
             conn: Mutex::new(conn),
@@ -135,9 +143,28 @@ impl ClipboardDB {
 
     // --- Group CRUD ---
 
+    fn ensure_group_with_type(
+        tx: &rusqlite::Transaction<'_>,
+        group_name: &str,
+        is_system: bool,
+    ) -> Result<i64> {
+        tx.execute(
+            "INSERT OR IGNORE INTO groups (name, is_system) VALUES (?1, ?2)",
+            params![group_name, is_system],
+        )?;
+        tx.query_row(
+            "SELECT id FROM groups WHERE name = ?1",
+            params![group_name],
+            |row| row.get(0),
+        )
+    }
+
     pub fn create_group(&self, name: String) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("INSERT INTO groups (name) VALUES (?1)", params![name])?;
+        conn.execute(
+            "INSERT INTO groups (name, is_system) VALUES (?1, 0)",
+            params![name],
+        )?;
         Ok(conn.last_insert_rowid())
     }
 
@@ -223,12 +250,69 @@ impl ClipboardDB {
     }
 
     pub fn insert_item(&self, content: String, category: Option<String>) -> Result<i64> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "INSERT INTO history (content_type, raw_content, category) VALUES (?1, ?2, ?3)",
-            params!["text", content, category],
-        )?;
-        Ok(conn.last_insert_rowid())
+        let mut groups = Vec::new();
+        if let Some(cat) = category.clone() {
+            groups.push(cat);
+        }
+        self.insert_item_with_groups("text", content, category, groups, false)
+    }
+
+    pub fn insert_auto_grouped_item(&self, content: String, groups: Vec<String>) -> Result<i64> {
+        let primary = groups.first().cloned();
+        self.insert_item_with_groups("text", content, primary, groups, true)
+    }
+
+    fn insert_item_with_groups(
+        &self,
+        content_type: &str,
+        content: String,
+        primary_category: Option<String>,
+        groups: Vec<String>,
+        system_groups: bool,
+    ) -> Result<i64> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        let existing_item_id: Option<i64> = tx
+            .query_row(
+                "SELECT id FROM history WHERE raw_content = ?1 ORDER BY created_at DESC LIMIT 1",
+                params![content],
+                |row| row.get(0),
+            )
+            .ok();
+
+        let item_id = if let Some(id) = existing_item_id {
+            tx.execute(
+                "UPDATE history
+                 SET created_at = CURRENT_TIMESTAMP,
+                     category = COALESCE(?1, category),
+                     content_type = ?2
+                 WHERE id = ?3",
+                params![primary_category, content_type, id],
+            )?;
+            id
+        } else {
+            tx.execute(
+                "INSERT INTO history (content_type, raw_content, category) VALUES (?1, ?2, ?3)",
+                params![content_type, content, primary_category],
+            )?;
+            tx.last_insert_rowid()
+        };
+
+        for group_name in groups {
+            let trimmed = group_name.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let group_id = Self::ensure_group_with_type(&tx, trimmed, system_groups)?;
+            tx.execute(
+                "INSERT OR IGNORE INTO item_groups (item_id, group_id) VALUES (?1, ?2)",
+                params![item_id, group_id],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(item_id)
     }
 
     pub fn get_history(&self, search: Option<String>) -> Result<Vec<ClipboardItem>> {
@@ -237,55 +321,76 @@ impl ClipboardDB {
         let mut rows;
 
         if let Some(s) = search {
-            if s.starts_with("group:") {
+            if s.starts_with("group:") || s.starts_with("category:") {
                 let parts: Vec<&str> = s.splitn(2, ' ').collect();
-                let group_name = parts[0].replace("group:", "");
+                let group_name = parts[0]
+                    .trim_start_matches("group:")
+                    .trim_start_matches("category:")
+                    .to_string();
                 let search_term = if parts.len() > 1 { parts[1] } else { "" };
                 let search_pattern = format!("%{}%", search_term);
 
-                let where_clause = match group_name.as_str() {
-                    "Dev" => "category IN ('Docker', 'Kubernetes', 'IaC', 'Cloud CLI', 'Shell / OS', 'CI / Build')",
-                    "Code" => "category IN ('Version Control', 'Package Management', 'Runtime / Build', 'Database')",
-                    "URL" => "category = 'URL'",
-                    "Images" => "content_type = 'image'",
-                    "Text" => "content_type = 'text'",
-                    _ => "1=0" // Unknown group returns nothing
-                };
-
-                let sql = format!(
-                    "SELECT id, content_type, raw_content, category, is_permanent, created_at 
-                     FROM history 
-                     WHERE ({}) AND raw_content LIKE ?1
-                     ORDER BY is_permanent DESC, created_at DESC 
-                     LIMIT 100",
-                    where_clause
-                );
-
-                stmt = conn.prepare(&sql)?;
-                rows = stmt.query(params![search_pattern])?;
-            } else if s.starts_with("category:") {
-                // Filter items by category/group name in item_groups
-                let parts: Vec<&str> = s.splitn(2, ' ').collect();
-                let cat_name = parts[0].replace("category:", "");
-                let search_term = if parts.len() > 1 { parts[1] } else { "" };
-                let search_pattern = format!("%{}%", search_term);
-
-                stmt = conn.prepare(
-                    "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at 
-                     FROM history h
-                     JOIN item_groups ig ON h.id = ig.item_id
-                     JOIN groups g ON ig.group_id = g.id
-                     WHERE g.name = ?1 AND h.raw_content LIKE ?2
-                     ORDER BY h.is_permanent DESC, h.created_at DESC 
-                     LIMIT 100",
-                )?;
-                rows = stmt.query(params![cat_name, search_pattern])?;
+                if group_name.eq_ignore_ascii_case("text") {
+                    stmt = conn.prepare(
+                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at
+                         FROM history h
+                         WHERE h.content_type = 'text' AND h.raw_content LIKE ?1
+                         ORDER BY h.is_permanent DESC, h.created_at DESC
+                         LIMIT 100",
+                    )?;
+                    rows = stmt.query(params![search_pattern])?;
+                } else if group_name.eq_ignore_ascii_case("images") {
+                    stmt = conn.prepare(
+                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at
+                         FROM history h
+                         WHERE h.content_type = 'image' AND h.raw_content LIKE ?1
+                         ORDER BY h.is_permanent DESC, h.created_at DESC
+                         LIMIT 100",
+                    )?;
+                    rows = stmt.query(params![search_pattern])?;
+                } else if group_name.eq_ignore_ascii_case("url")
+                    || group_name.eq_ignore_ascii_case("urls")
+                {
+                    stmt = conn.prepare(
+                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at
+                         FROM history h
+                         LEFT JOIN item_groups ig ON h.id = ig.item_id
+                         LEFT JOIN groups g ON ig.group_id = g.id
+                         WHERE (
+                            g.name = 'URL'
+                            OR h.raw_content LIKE 'http://%'
+                            OR h.raw_content LIKE 'https://%'
+                            OR h.raw_content LIKE 'ftp://%'
+                         ) AND h.raw_content LIKE ?1
+                         ORDER BY h.is_permanent DESC, h.created_at DESC
+                         LIMIT 100",
+                    )?;
+                    rows = stmt.query(params![search_pattern])?;
+                } else {
+                    stmt = conn.prepare(
+                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at 
+                         FROM history h
+                         JOIN item_groups ig ON h.id = ig.item_id
+                         JOIN groups g ON ig.group_id = g.id
+                         WHERE g.name = ?1 AND h.raw_content LIKE ?2
+                         ORDER BY h.is_permanent DESC, h.created_at DESC 
+                         LIMIT 100",
+                    )?;
+                    rows = stmt.query(params![group_name, search_pattern])?;
+                }
             } else {
                 let pattern = format!("%{}%", s);
                 stmt = conn.prepare(
                     "SELECT id, content_type, raw_content, category, is_permanent, created_at 
                      FROM history 
-                     WHERE raw_content LIKE ?1 OR category LIKE ?1 
+                     WHERE raw_content LIKE ?1
+                        OR category LIKE ?1
+                        OR EXISTS (
+                            SELECT 1
+                            FROM item_groups ig
+                            JOIN groups g ON ig.group_id = g.id
+                            WHERE ig.item_id = history.id AND g.name LIKE ?1
+                        )
                      ORDER BY is_permanent DESC, created_at DESC 
                      LIMIT 100",
                 )?;
@@ -374,15 +479,7 @@ impl ClipboardDB {
         }
 
         // Ensure group exists
-        tx.execute(
-            "INSERT OR IGNORE INTO groups (name) VALUES (?1)",
-            params![group_name],
-        )?;
-        let group_id: i64 = tx.query_row(
-            "SELECT id FROM groups WHERE name = ?1",
-            params![group_name],
-            |row| row.get(0),
-        )?;
+        let group_id = Self::ensure_group_with_type(&tx, &group_name, false)?;
 
         tx.execute(
             "INSERT OR IGNORE INTO item_groups (item_id, group_id) VALUES (?1, ?2)",
@@ -482,11 +579,8 @@ impl ClipboardDB {
     }
 
     pub fn prune_expired(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "DELETE FROM history WHERE is_permanent = 0 AND created_at < datetime('now', '-24 hours')",
-            [],
-        )?;
+        // Retention policy: keep clipboard entries for the whole running session.
+        // Cleanup by age is intentionally disabled.
         Ok(())
     }
 
@@ -499,7 +593,8 @@ impl ClipboardDB {
 
     pub fn get_categories(&self) -> Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT name FROM groups ORDER BY name ASC")?;
+        let mut stmt =
+            conn.prepare("SELECT name FROM groups WHERE is_system = 0 ORDER BY name ASC")?;
         let rows = stmt.query_map([], |row| row.get(0))?;
         let mut categories = Vec::new();
         for cat in rows {
