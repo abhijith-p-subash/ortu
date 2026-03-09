@@ -28,9 +28,7 @@ pub fn run() {
             Some(vec!["--hidden"]),
         ))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_focus();
-            }
+            show_main_window(app);
         }))
         // ---------------- CRITICAL FIX: Safe Global Shortcut Init ----------------
         // Initialize the plugin without shortcuts to prevent startup panics.
@@ -68,10 +66,7 @@ pub fn run() {
             }
 
             if !is_hidden {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                show_main_window(app.handle());
             }
 
             // ---------------- DB INIT ----------------
@@ -84,26 +79,21 @@ pub fn run() {
             let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
-            // ---------------- CRITICAL FIX: Safe Tray Icon Unwrap ----------------
-            let icon = app
-                .default_window_icon()
-                .cloned()
-                .unwrap_or_else(|| tauri::image::Image::new(&[], 0, 0));
-
-            TrayIconBuilder::new()
-                .icon(icon)
-                .menu(&menu)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "quit" => app.exit(0),
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                    _ => {}
-                })
-                .build(app)?;
+            let tray_enabled = if let Some(icon) = app.default_window_icon().cloned() {
+                TrayIconBuilder::new()
+                    .icon(icon)
+                    .menu(&menu)
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "quit" => app.exit(0),
+                        "show" => show_main_window(app),
+                        _ => {}
+                    })
+                    .build(app)?;
+                true
+            } else {
+                log::warn!("Default window icon missing; skipping tray icon initialization.");
+                false
+            };
 
             // macOS: Run as background accessory app (no dock icon, stays in menu bar)
             #[cfg(target_os = "macos")]
@@ -111,15 +101,18 @@ pub fn run() {
 
             // ---------------- MAIN WINDOW SETUP ----------------
             // Prevent the app from quitting when the main window is closed
-            if let Some(window) = app.get_webview_window("main") {
-                let w = window.clone();
-                window.on_window_event(move |e| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = e {
-                        // Prevent the window from closing and hide instead
-                        api.prevent_close();
-                        let _ = w.hide();
-                    }
-                });
+            if tray_enabled {
+                if let Some(window) = app.get_webview_window("main") {
+                    let w = window.clone();
+                    window.on_window_event(move |e| {
+                        if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+                            // Prevent the window from closing and hide instead.
+                            // This requires a tray icon path to bring the app back.
+                            api.prevent_close();
+                            let _ = w.hide();
+                        }
+                    });
+                }
             }
 
             // ---------------- POPUP WINDOW SETUP ----------------
@@ -158,14 +151,14 @@ pub fn run() {
             let autostart_manager = app.autolaunch();
             if let Ok(enabled) = autostart_manager.is_enabled() {
                 if !enabled {
-                    println!("Autostart not enabled. Enabling...");
+                    log::info!("Autostart not enabled. Enabling...");
                     match autostart_manager.enable() {
-                        Ok(_) => println!("Autostart enabled successfully."),
-                        Err(e) => eprintln!("Failed to enable autostart: {}", e),
+                        Ok(_) => log::info!("Autostart enabled successfully."),
+                        Err(e) => log::error!("Failed to enable autostart: {}", e),
                     }
                 }
             } else {
-                eprintln!("Failed to check autostart status");
+                log::error!("Failed to check autostart status");
             }
 
             Ok(())
@@ -196,6 +189,14 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri app");
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
 }
 
 fn toggle_popup(app: &tauri::AppHandle) {
