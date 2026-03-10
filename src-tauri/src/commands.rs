@@ -1,4 +1,5 @@
-use crate::db::{ClipboardDB, ClipboardItem};
+use crate::db::{ClipboardDB, ClipboardItem, Snippet};
+use base64::Engine as _;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -135,10 +136,81 @@ pub fn get_categories(app: AppHandle) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub async fn paste_item(_app: AppHandle) -> Result<(), String> {
-    // Small delay to ensure the window has hidden and focus returned to previous app
-    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+pub fn list_snippets(app: AppHandle) -> Result<Vec<Snippet>, String> {
+    let db = app.state::<ClipboardDB>();
+    db.list_snippets().map_err(|e| e.to_string())
+}
 
+#[tauri::command]
+pub fn save_snippet(app: AppHandle, name: String, body: String) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    db.upsert_snippet(name, body).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_snippet(app: AppHandle, id: i64) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    db.delete_snippet(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn render_snippet(body: String, clipboard: Option<String>) -> Result<String, String> {
+    let now = chrono::Local::now();
+    let mut rendered = body
+        .replace("{{date}}", &now.format("%Y-%m-%d").to_string())
+        .replace("{{time}}", &now.format("%H:%M:%S").to_string())
+        .replace("{{datetime}}", &now.format("%Y-%m-%d %H:%M:%S").to_string());
+    rendered = rendered.replace("{{clipboard}}", &clipboard.unwrap_or_default());
+    Ok(rendered)
+}
+
+#[tauri::command]
+pub fn transform_content(content: String, transform: String) -> Result<String, String> {
+    let value = match transform.as_str() {
+        "trim" => content.trim().to_string(),
+        "uppercase" => content.to_uppercase(),
+        "lowercase" => content.to_lowercase(),
+        "slugify" => content
+            .trim()
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect::<String>()
+            .split('-')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("-"),
+        "json_pretty" => serde_json::to_string_pretty(
+            &serde_json::from_str::<serde_json::Value>(&content).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?,
+        "json_minify" => serde_json::to_string(
+            &serde_json::from_str::<serde_json::Value>(&content).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?,
+        "base64_encode" => base64::engine::general_purpose::STANDARD.encode(content),
+        "base64_decode" => String::from_utf8(
+            base64::engine::general_purpose::STANDARD
+                .decode(content)
+                .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?,
+        "url_encode" => urlencoding::encode(&content).to_string(),
+        "url_decode" => urlencoding::decode(&content)
+            .map_err(|e| e.to_string())?
+            .to_string(),
+        _ => return Err("Unknown transform".to_string()),
+    };
+    Ok(value)
+}
+
+#[tauri::command]
+pub async fn paste_item(_app: AppHandle) -> Result<(), String> {
+    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+    send_paste_shortcut()
+}
+
+fn send_paste_shortcut() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         use std::process::Command;
@@ -158,6 +230,26 @@ pub async fn paste_item(_app: AppHandle) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn copy_item_to_clipboard(app: AppHandle, id: i64) -> Result<(), String> {
+    use arboard::Clipboard;
+
+    let db = app.state::<ClipboardDB>();
+    let (_content_type, raw_content) = db.get_item_payload(id).map_err(|e| e.to_string())?;
+
+    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.set_text(raw_content).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn copy_item_and_paste(app: AppHandle, id: i64) -> Result<(), String> {
+    copy_item_to_clipboard(app, id)?;
+    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+    send_paste_shortcut()
 }
 
 #[tauri::command]

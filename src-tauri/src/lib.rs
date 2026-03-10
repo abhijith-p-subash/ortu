@@ -6,6 +6,7 @@ mod db;
 use db::ClipboardDB;
 use std::thread;
 use std::time::Duration;
+use sysinfo::System;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::Manager;
@@ -71,7 +72,8 @@ pub fn run() {
 
             // ---------------- DB INIT ----------------
             let db = ClipboardDB::new(app.handle())?;
-            db.clear_ephemeral_on_start()?;
+            let boot_session_id = current_boot_session_id();
+            let _ = db.clear_ephemeral_on_boot_change(&boot_session_id)?;
             app.manage(db);
 
             // ---------------- TRAY ----------------
@@ -179,16 +181,28 @@ pub fn run() {
             commands::export_group,
             commands::import_group,
             commands::paste_item,
+            commands::copy_item_to_clipboard,
+            commands::copy_item_and_paste,
             commands::manual_cleanup,
             commands::close_window,
             commands::backup_data,
             commands::restore_data,
             commands::add_to_group,
             commands::remove_from_group,
-            commands::export_all_txt
+            commands::export_all_txt,
+            commands::list_snippets,
+            commands::save_snippet,
+            commands::delete_snippet,
+            commands::render_snippet,
+            commands::transform_content
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri app");
+}
+
+fn current_boot_session_id() -> String {
+    // Stable across app restarts, changes on OS reboot.
+    format!("{}", System::boot_time())
 }
 
 fn show_main_window(app: &tauri::AppHandle) {

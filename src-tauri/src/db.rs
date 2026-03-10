@@ -32,6 +32,38 @@ pub struct BackupData {
     pub exported_at: String,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct Snippet {
+    pub id: i64,
+    pub name: String,
+    pub body: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+fn fuzzy_score(query: &str, text: &str) -> i32 {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return 0;
+    }
+    let t = text.to_lowercase();
+    if t.contains(&q) {
+        return 1000 - (t.find(&q).unwrap_or(0) as i32);
+    }
+
+    let mut score = 0;
+    let mut last_idx = 0usize;
+    for qc in q.chars() {
+        if let Some(pos) = t[last_idx..].find(qc) {
+            score += 8;
+            last_idx += pos + 1;
+        } else {
+            return -1;
+        }
+    }
+    score
+}
+
 impl ClipboardDB {
     pub fn new(app_handle: &AppHandle) -> Result<Self> {
         let app_dir = app_handle
@@ -102,6 +134,37 @@ impl ClipboardDB {
             [],
         )?;
 
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS item_group_confidence (
+                item_id INTEGER NOT NULL,
+                group_id INTEGER NOT NULL,
+                confidence REAL NOT NULL,
+                PRIMARY KEY (item_id, group_id),
+                FOREIGN KEY(item_id) REFERENCES history(id) ON DELETE CASCADE,
+                FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS app_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS snippets (
+                id INTEGER PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL,
+                body TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )",
+            [],
+        )?;
+
         // Migrate existing categories into groups table
         conn.execute(
             "INSERT OR IGNORE INTO groups (name) 
@@ -135,6 +198,10 @@ impl ClipboardDB {
             "CREATE INDEX IF NOT EXISTS idx_item_groups_group_id ON item_groups(group_id)",
             [],
         )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_item_group_confidence_item_id ON item_group_confidence(item_id)",
+            [],
+        )?;
 
         Ok(ClipboardDB {
             conn: Mutex::new(conn),
@@ -157,6 +224,41 @@ impl ClipboardDB {
             params![group_name],
             |row| row.get(0),
         )
+    }
+
+    fn get_meta_value(tx: &rusqlite::Transaction<'_>, key: &str) -> Result<Option<String>> {
+        let value = tx
+            .query_row(
+                "SELECT value FROM app_meta WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .ok();
+        Ok(value)
+    }
+
+    fn set_meta_value(tx: &rusqlite::Transaction<'_>, key: &str, value: &str) -> Result<()> {
+        tx.execute(
+            "INSERT INTO app_meta (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_ephemeral_on_boot_change(&self, boot_session_id: &str) -> Result<bool> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let previous = Self::get_meta_value(&tx, "boot_session_id")?;
+        let changed = previous.as_deref() != Some(boot_session_id);
+
+        if changed {
+            tx.execute("DELETE FROM history WHERE is_permanent = 0", [])?;
+            Self::set_meta_value(&tx, "boot_session_id", boot_session_id)?;
+        }
+
+        tx.commit()?;
+        Ok(changed)
     }
 
     pub fn create_group(&self, name: String) -> Result<i64> {
@@ -250,16 +352,21 @@ impl ClipboardDB {
     }
 
     pub fn insert_item(&self, content: String, category: Option<String>) -> Result<i64> {
-        let mut groups = Vec::new();
+        let mut groups: Vec<(String, f32)> = Vec::new();
         if let Some(cat) = category.clone() {
-            groups.push(cat);
+            groups.push((cat, 1.0));
         }
         self.insert_item_with_groups("text", content, category, groups, false)
     }
 
-    pub fn insert_auto_grouped_item(&self, content: String, groups: Vec<String>) -> Result<i64> {
-        let primary = groups.first().cloned();
-        self.insert_item_with_groups("text", content, primary, groups, true)
+    pub fn insert_auto_grouped_content(
+        &self,
+        content_type: &str,
+        content: String,
+        groups: Vec<(String, f32)>,
+    ) -> Result<i64> {
+        let primary = groups.first().map(|(name, _)| name.clone());
+        self.insert_item_with_groups(content_type, content, primary, groups, true)
     }
 
     fn insert_item_with_groups(
@@ -267,7 +374,7 @@ impl ClipboardDB {
         content_type: &str,
         content: String,
         primary_category: Option<String>,
-        groups: Vec<String>,
+        groups: Vec<(String, f32)>,
         system_groups: bool,
     ) -> Result<i64> {
         let mut conn = self.conn.lock().unwrap();
@@ -299,7 +406,7 @@ impl ClipboardDB {
             tx.last_insert_rowid()
         };
 
-        for group_name in groups {
+        for (group_name, confidence) in groups {
             let trimmed = group_name.trim();
             if trimmed.is_empty() {
                 continue;
@@ -308,6 +415,12 @@ impl ClipboardDB {
             tx.execute(
                 "INSERT OR IGNORE INTO item_groups (item_id, group_id) VALUES (?1, ?2)",
                 params![item_id, group_id],
+            )?;
+            tx.execute(
+                "INSERT INTO item_group_confidence (item_id, group_id, confidence)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(item_id, group_id) DO UPDATE SET confidence = excluded.confidence",
+                params![item_id, group_id, confidence.max(0.0)],
             )?;
         }
 
@@ -319,6 +432,7 @@ impl ClipboardDB {
         let conn = self.conn.lock().unwrap();
         let mut stmt;
         let mut rows;
+        let mut fuzzy_query: Option<String> = None;
 
         if let Some(s) = search {
             if s.starts_with("group:") || s.starts_with("category:") {
@@ -379,6 +493,7 @@ impl ClipboardDB {
                     rows = stmt.query(params![group_name, search_pattern])?;
                 }
             } else {
+                fuzzy_query = Some(s.clone());
                 let pattern = format!("%{}%", s);
                 stmt = conn.prepare(
                     "SELECT id, content_type, raw_content, category, is_permanent, created_at 
@@ -392,7 +507,7 @@ impl ClipboardDB {
                             WHERE ig.item_id = history.id AND g.name LIKE ?1
                         )
                      ORDER BY is_permanent DESC, created_at DESC 
-                     LIMIT 100",
+                     LIMIT 500",
                 )?;
                 rows = stmt.query(params![pattern])?;
             }
@@ -458,6 +573,29 @@ impl ClipboardDB {
                     item.groups = g_list.clone();
                 }
             }
+        }
+
+        if let Some(query) = fuzzy_query {
+            let mut ranked: Vec<(i32, ClipboardItem)> = items
+                .into_iter()
+                .filter_map(|item| {
+                    let group_text = item.groups.join(" ");
+                    let combined = format!(
+                        "{} {} {}",
+                        item.raw_content,
+                        item.category.clone().unwrap_or_default(),
+                        group_text
+                    );
+                    let score = fuzzy_score(&query, &combined);
+                    if score >= 0 {
+                        Some((score, item))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            ranked.sort_by(|a, b| b.0.cmp(&a.0));
+            items = ranked.into_iter().take(100).map(|(_, item)| item).collect();
         }
 
         Ok(items)
@@ -569,6 +707,15 @@ impl ClipboardDB {
         Ok(())
     }
 
+    pub fn get_item_payload(&self, id: i64) -> Result<(String, String)> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT content_type, raw_content FROM history WHERE id = ?1",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+    }
+
     pub fn toggle_permanent(&self, id: i64) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -584,13 +731,6 @@ impl ClipboardDB {
         Ok(())
     }
 
-    pub fn clear_ephemeral_on_start(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        // "Until computer shutdown" - cleared when app starts
-        conn.execute("DELETE FROM history WHERE is_permanent = 0", [])?;
-        Ok(())
-    }
-
     pub fn get_categories(&self) -> Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt =
@@ -601,6 +741,44 @@ impl ClipboardDB {
             categories.push(cat?);
         }
         Ok(categories)
+    }
+
+    pub fn list_snippets(&self) -> Result<Vec<Snippet>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, body, created_at, updated_at
+             FROM snippets
+             ORDER BY updated_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Snippet {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                body: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn upsert_snippet(&self, name: String, body: String) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO snippets (name, body, created_at, updated_at)
+             VALUES (?1, ?2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             ON CONFLICT(name) DO UPDATE SET
+               body = excluded.body,
+               updated_at = CURRENT_TIMESTAMP",
+            params![name, body],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_snippet(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM snippets WHERE id = ?1", params![id])?;
+        Ok(())
     }
 
     // --- Backup & Restore ---

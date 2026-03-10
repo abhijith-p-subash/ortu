@@ -6,6 +6,8 @@
   import { save, open } from "@tauri-apps/plugin-dialog";
   import { platform } from "@tauri-apps/plugin-os";
   import { getVersion } from "@tauri-apps/api/app";
+  import type { Snippet } from "$lib/types";
+  import { buildSearchQuery, clipPreview } from "$lib/filters";
   import "../app.css";
 
   let history = $state<ClipboardItem[]>([]);
@@ -39,6 +41,7 @@
   // Toast notification state
   let showCopiedToast = $state(false);
   let copiedToastTimer: number | null = null;
+  let snippets = $state<Snippet[]>([]);
 
   // Detect platform
   onMount(async () => {
@@ -58,8 +61,8 @@
   async function loadHistory() {
     try {
       const search = selectedGroup
-        ? `category:${selectedGroup} ${searchQuery}`
-        : searchQuery;
+        ? buildSearchQuery(selectedGroup, searchQuery)
+        : buildSearchQuery(null, searchQuery);
       const data = (await invoke("get_history", {
         search: search || null,
       })) as ClipboardItem[];
@@ -78,6 +81,67 @@
     } catch (e) {
       console.error("Failed to load groups:", e);
     }
+  }
+
+  async function loadSnippets() {
+    try {
+      snippets = (await invoke("list_snippets")) as Snippet[];
+    } catch (e) {
+      console.error("Failed to load snippets:", e);
+    }
+  }
+
+  async function runCommandPalette() {
+    const cmd = prompt(
+      "Command palette:\n- t <trim|uppercase|lowercase|slugify|json_pretty|json_minify|base64_encode|base64_decode|url_encode|url_decode>\n- sn save <name>\n- sn paste <name>"
+    );
+    if (!cmd) return;
+
+    const selected = history[selectedIndex];
+    const parts = cmd.trim().split(/\s+/);
+    if (parts[0] === "t" && parts[1] && selected) {
+      try {
+        const transformed = (await invoke("transform_content", {
+          content: selected.raw_content,
+          transform: parts[1],
+        })) as string;
+        await navigator.clipboard.writeText(transformed);
+        await invoke("paste_item");
+      } catch (e) {
+        alert("Transform failed: " + e);
+      }
+      return;
+    }
+
+    if (parts[0] === "sn" && parts[1] === "save" && parts[2]) {
+      const name = parts.slice(2).join(" ");
+      const body = prompt(
+        `Snippet body for "${name}"`,
+        selected?.raw_content || ""
+      );
+      if (!body) return;
+      await invoke("save_snippet", { name, body });
+      await loadSnippets();
+      return;
+    }
+
+    if (parts[0] === "sn" && parts[1] === "paste" && parts[2]) {
+      const name = parts.slice(2).join(" ");
+      const snippet = snippets.find((s) => s.name === name);
+      if (!snippet) {
+        alert(`Snippet "${name}" not found`);
+        return;
+      }
+      const rendered = (await invoke("render_snippet", {
+        body: snippet.body,
+        clipboard: selected?.raw_content || "",
+      })) as string;
+      await navigator.clipboard.writeText(rendered);
+      await invoke("paste_item");
+      return;
+    }
+
+    alert("Unknown command");
   }
 
   async function createGroup() {
@@ -282,10 +346,8 @@
 
   async function copyAndPaste(item: ClipboardItem) {
     try {
-      await navigator.clipboard.writeText(item.raw_content);
-      // await invoke("close_window");
-      console.log("Item copied to clipboard");
-      await invoke("paste_item");
+      await invoke("close_window", { label: "main" });
+      await invoke("copy_item_and_paste", { id: item.id });
 
       // Show copied toast
       if (copiedToastTimer) clearTimeout(copiedToastTimer);
@@ -343,6 +405,9 @@
       e.preventDefault();
       isViewingGroups = !isViewingGroups;
       if (isViewingGroups) loadGroups();
+    } else if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      runCommandPalette();
     }
   }
 
@@ -370,6 +435,7 @@
   onMount(() => {
     loadHistory();
     loadGroups();
+    loadSnippets();
     window.addEventListener("keydown", handleKeydown);
 
     let unlistenFocus: () => void;
@@ -939,7 +1005,7 @@
                         ? ''
                         : 'line-clamp-4'}"
                     >
-                      {item.raw_content}
+                      {clipPreview(item.raw_content, item.content_type)}
                     </p>
                     {#if item.raw_content.split("\n").length > 4 || item.raw_content.length > 300}
                       <button
