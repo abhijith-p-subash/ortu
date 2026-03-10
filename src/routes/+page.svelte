@@ -442,11 +442,11 @@
 </script>
 
 <div
-  class="flex flex-col h-screen bg-[#1a1a1a] text-zinc-300 overflow-hidden font-sans selection:bg-[#FF8A3D]/30"
+  class="flex flex-col h-screen bg-[#171a1d] text-zinc-300 overflow-hidden font-sans selection:bg-[#FF8A3D]/30"
 >
   <!-- Top Bar / Header -->
   <header
-    class="px-4 py-3 border-b border-[#333] bg-[#1e1e1e] flex items-center justify-between shadow-sm"
+    class="px-4 py-3 border-b border-[#333] bg-[#171a1d] flex items-center justify-between shadow-sm"
   >
     <div class="flex items-center space-x-3">
       <div
@@ -466,7 +466,7 @@
     <div class="flex items-center space-x-2">
       <button
         onclick={openExportModal}
-        class="flex items-center space-x-2 px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] rounded-md border border-[#333] transition-all text-xs font-semibold"
+        class="flex items-center space-x-2 px-3 py-1.5 bg-[#343a42] hover:bg-[#2a3038] rounded-md border border-[#333] transition-all text-xs font-semibold"
         title="Full Backup (.json)"
       >
         <svg
@@ -487,7 +487,7 @@
       </button>
       <button
         onclick={openImportModal}
-        class="flex items-center space-x-2 px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] rounded-md border border-[#333] transition-all text-xs font-semibold"
+        class="flex items-center space-x-2 px-3 py-1.5 bg-[#343a42] hover:bg-[#2a3038] rounded-md border border-[#333] transition-all text-xs font-semibold"
         title="Restore Data (.json)"
       >
         <svg
@@ -507,7 +507,7 @@
       <div class="w-px h-4 bg-[#333] mx-1"></div>
       <button
         onclick={exportAllTxt}
-        class="flex items-center space-x-2 px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] rounded-md border border-[#333] transition-all text-xs font-semibold"
+        class="flex items-center space-x-2 px-3 py-1.5 bg-[#343a42] hover:bg-[#2a3038] rounded-md border border-[#333] transition-all text-xs font-semibold"
         title="Export All to .TXT"
       >
         <svg
@@ -545,7 +545,7 @@
       <div class="w-px h-4 bg-[#333] mx-1"></div>
       <button
         onclick={() => (showHelpModal = true)}
-        class="p-1.5 hover:bg-[#2a2a2a] rounded-md transition-all text-zinc-400 hover:text-white"
+        class="p-1.5 hover:bg-[#343a42] rounded-md transition-all text-zinc-400 hover:text-white"
         title="Help"
       >
         <svg
@@ -565,7 +565,7 @@
       </button>
       <button
         onclick={() => (showAboutModal = true)}
-        class="p-1.5 hover:bg-[#2a2a2a] rounded-md transition-all text-zinc-400 hover:text-white"
+        class="p-1.5 hover:bg-[#343a42] rounded-md transition-all text-zinc-400 hover:text-white"
         title="About"
       >
         <svg
@@ -591,7 +591,7 @@
 
   <div class="flex flex-1 overflow-hidden">
     <!-- Persistent Sidebar -->
-    <aside class="w-64 bg-[#1e1e1e] border-r border-[#333] flex flex-col">
+    <aside class="w-64 bg-[#171a1d] border-r border-[#333] flex flex-col">
       <div class="p-4 border-b border-[#333]">
         <span
           class="text-[10px] font-bold uppercase tracking-widest text-zinc-500"
@@ -604,7 +604,7 @@
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           null
             ? 'bg-[#AEB291]/18 text-[#3F423C] font-bold'
-            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+            : 'text-zinc-400 hover:bg-[#343a42]'}"
           onclick={() => {
             selectedGroup = null;
           }}
@@ -641,7 +641,7 @@
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           'URL'
             ? 'bg-[#AEB291]/18 text-[#3F423C] font-bold'
-            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+            : 'text-zinc-400 hover:bg-[#343a42]'}"
           onclick={() => (selectedGroup = "URL")}
         >
           <span class="flex items-center gap-2">
@@ -672,7 +672,7 @@
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           'Images'
             ? 'bg-[#AEB291]/18 text-[#3F423C] font-bold'
-            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+            : 'text-zinc-400 hover:bg-[#343a42]'}"
           onclick={() => (selectedGroup = "Images")}
         >
           <span class="flex items-center gap-2">
@@ -699,7 +699,7 @@
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           'Text'
             ? 'bg-[#AEB291]/18 text-[#3F423C] font-bold'
-            : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
+            : 'text-zinc-400 hover:bg-[#343a42]'}"
           onclick={() => (selectedGroup = "Text")}
         >
           <span class="flex items-center gap-2">
@@ -741,9 +741,9 @@
       <div class="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-1">
         {#each groups as group}
           <div
-            class="group relative flex items-center rounded-md hover:bg-[#2a2a2a] transition-all {selectedGroup ===
+            class="group relative flex items-center rounded-md hover:bg-[#343a42] transition-all {selectedGroup ===
             group
-              ? 'bg-[#252525]'
+              ? 'bg-[#2a2f35]'
               : ''}"
           >
             {#if editingGroup === group}
@@ -845,7 +845,7 @@
     </aside>
 
     <!-- Main Content Area -->
-    <main class="flex-1 flex flex-col bg-[#1a1a1a]">
+    <main class="flex-1 flex flex-col bg-[#171a1d]">
       <!-- Search & Filter Area -->
       <div class="p-4 border-b border-[#333] flex items-center space-x-4">
         <div class="flex-1 relative">
@@ -872,7 +872,7 @@
             placeholder={selectedGroup
               ? `Search in ${selectedGroup}...`
               : "Search all clips..."}
-            class="w-full bg-[#1e1e1e] border border-[#333] rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all placeholder:text-zinc-600 font-medium"
+            class="w-full bg-[#171a1d] border border-[#333] rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all placeholder:text-zinc-600 font-medium"
           />
         </div>
         {#if selectedGroup}
@@ -916,9 +916,9 @@
         <div class="grid gap-2">
           {#each history as item, i (item.id)}
             <div
-              class="w-full p-4 rounded-xl border border-[#333] bg-[#1e1e1e] hover:bg-[#252525] transition-all group flex flex-col space-y-3 cursor-default
+              class="w-full p-4 rounded-xl border border-[#333] bg-[#171a1d] hover:bg-[#2a2f35] transition-all group flex flex-col space-y-3 cursor-default
                             {i === selectedIndex
-                ? 'ring-2 ring-[#FF8A3D]/50 bg-[#252525]'
+                ? 'ring-2 ring-[#AEB291]/45 bg-[#2a2f35]'
                 : ''}"
               onclick={() => {
                 selectedIndex = i;
@@ -968,7 +968,7 @@
                 </div>
                 <div class="flex items-center space-x-1 ml-4 self-start">
                   <button
-                    class="p-2 rounded-lg hover:bg-[#333] transition-colors {item.is_permanent
+                    class="p-2 rounded-lg hover:bg-[#2a3038] transition-colors {item.is_permanent
                       ? 'text-amber-500'
                       : 'text-zinc-600'}"
                     onclick={(e) => {
@@ -995,7 +995,7 @@
                     </svg>
                   </button>
                   <button
-                    class="p-2 rounded-lg hover:bg-[#333] hover:text-[#FF8A3D] transition-colors text-zinc-600"
+                    class="p-2 rounded-lg hover:bg-[#2a3038] hover:text-[#FF8A3D] transition-colors text-zinc-600"
                     onclick={(e) => {
                       e.stopPropagation();
                       categorizingItemId = item.id;
@@ -1142,7 +1142,7 @@
             class="flex flex-col items-center justify-center h-full py-20 text-center"
           >
             <div
-              class="w-16 h-16 bg-[#1e1e1e] rounded-2xl flex items-center justify-center mb-4 text-zinc-700"
+              class="w-16 h-16 bg-[#171a1d] rounded-2xl flex items-center justify-center mb-4 text-zinc-700"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -1174,7 +1174,7 @@
       class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
     >
       <div
-        class="w-full max-w-sm bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden p-6 animate-in zoom-in-95 duration-200"
+        class="w-full max-w-sm bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden p-6 animate-in zoom-in-95 duration-200"
       >
         <h3 class="text-sm font-bold text-white mb-4">Export Data</h3>
 
@@ -1182,20 +1182,20 @@
           class="max-h-60 overflow-y-auto mb-4 border border-[#333] rounded-lg p-2"
         >
           <label
-            class="flex items-center space-x-2 text-xs text-zinc-400 p-2 hover:bg-[#2a2a2a] rounded cursor-pointer"
+            class="flex items-center space-x-2 text-xs text-zinc-400 p-2 hover:bg-[#343a42] rounded cursor-pointer"
           >
             <input
               type="checkbox"
               checked={exportSelectedGroups.length === 0}
               onchange={() => (exportSelectedGroups = [])}
-              class="rounded border-zinc-600 bg-[#2a2a2a] text-[#FF8A3D] focus:ring-[#AEB291]/55"
+              class="rounded border-zinc-600 bg-[#343a42] text-[#FF8A3D] focus:ring-[#AEB291]/55"
             />
             <span class="font-bold">All Data</span>
           </label>
           <div class="h-px bg-[#333] my-1"></div>
           {#each groups as group}
             <label
-              class="flex items-center space-x-2 text-xs text-zinc-400 p-2 hover:bg-[#2a2a2a] rounded cursor-pointer"
+              class="flex items-center space-x-2 text-xs text-zinc-400 p-2 hover:bg-[#343a42] rounded cursor-pointer"
             >
               <input
                 type="checkbox"
@@ -1209,7 +1209,7 @@
                     );
                   }
                 }}
-                class="rounded border-zinc-600 bg-[#2a2a2a] text-[#FF8A3D] focus:ring-[#AEB291]/55"
+                class="rounded border-zinc-600 bg-[#343a42] text-[#FF8A3D] focus:ring-[#AEB291]/55"
               />
               <span>{group}</span>
             </label>
@@ -1239,15 +1239,15 @@
       class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
     >
       <div
-        class="w-full max-w-sm bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden p-6 animate-in zoom-in-95 duration-200"
+        class="w-full max-w-sm bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden p-6 animate-in zoom-in-95 duration-200"
       >
         <h3 class="text-sm font-bold text-white mb-4">Import Data</h3>
 
         <div class="mb-6 space-y-3">
           <label
-            class="flex items-center space-x-3 p-3 border border-[#333] rounded-xl cursor-pointer hover:bg-[#2a2a2a] transition-colors {importMode ===
+            class="flex items-center space-x-3 p-3 border border-[#333] rounded-xl cursor-pointer hover:bg-[#343a42] transition-colors {importMode ===
             'merge'
-              ? 'bg-[#2a2a2a] border-[#AEB291]/45'
+              ? 'bg-[#343a42] border-[#AEB291]/45'
               : ''}"
           >
             <input
@@ -1255,7 +1255,7 @@
               name="importMode"
               value="merge"
               bind:group={importMode}
-              class="text-[#FF8A3D] focus:ring-[#AEB291]/55 bg-[#1e1e1e] border-zinc-600"
+              class="text-[#FF8A3D] focus:ring-[#AEB291]/55 bg-[#171a1d] border-zinc-600"
             />
             <div>
               <div class="text-white text-xs font-bold">Merge</div>
@@ -1266,9 +1266,9 @@
           </label>
 
           <label
-            class="flex items-center space-x-3 p-3 border border-[#333] rounded-xl cursor-pointer hover:bg-[#2a2a2a] transition-colors {importMode ===
+            class="flex items-center space-x-3 p-3 border border-[#333] rounded-xl cursor-pointer hover:bg-[#343a42] transition-colors {importMode ===
             'replace'
-              ? 'bg-[#2a2a2a] border-[#AEB291]/45'
+              ? 'bg-[#343a42] border-[#AEB291]/45'
               : ''}"
           >
             <input
@@ -1276,7 +1276,7 @@
               name="importMode"
               value="replace"
               bind:group={importMode}
-              class="text-[#FF8A3D] focus:ring-[#AEB291]/55 bg-[#1e1e1e] border-zinc-600"
+              class="text-[#FF8A3D] focus:ring-[#AEB291]/55 bg-[#171a1d] border-zinc-600"
             />
             <div>
               <div class="text-white text-xs font-bold">Replace</div>
@@ -1310,10 +1310,10 @@
       class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
     >
       <div
-        class="w-full max-w-2xl bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200"
+        class="w-full max-w-2xl bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200"
       >
         <div
-          class="px-6 py-4 border-b border-[#333] flex justify-between items-center bg-[#1e1e1e]"
+          class="px-6 py-4 border-b border-[#333] flex justify-between items-center bg-[#171a1d]"
         >
           <div>
             <h2 class="text-lg font-bold text-white">Manage Groups</h2>
@@ -1342,13 +1342,13 @@
           </button>
         </div>
 
-        <div class="p-6 border-b border-[#333] bg-[#1a1a1a]">
+        <div class="p-6 border-b border-[#333] bg-[#171a1d]">
           <div class="flex items-center space-x-3">
             <input
               type="text"
               bind:value={newGroupName}
               placeholder="New group name..."
-              class="flex-1 bg-[#252525] border border-[#333] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium"
+              class="flex-1 bg-[#2a2f35] border border-[#333] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium"
               onkeydown={(e) => {
                 if (e.key === "Enter") createGroup();
               }}
@@ -1365,11 +1365,11 @@
         <div class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3">
           {#each groups as group}
             <div
-              class="flex items-center justify-between p-4 bg-[#252525] rounded-xl border border-transparent hover:border-[#333] transition-all group"
+              class="flex items-center justify-between p-4 bg-[#2a2f35] rounded-xl border border-transparent hover:border-[#333] transition-all group"
             >
               <div class="flex items-center space-x-4 flex-1">
                 <div
-                  class="w-10 h-10 rounded-lg bg-[#1e1e1e] flex items-center justify-center text-[#FF8A3D]/75"
+                  class="w-10 h-10 rounded-lg bg-[#171a1d] flex items-center justify-center text-[#FF8A3D]/75"
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -1388,7 +1388,7 @@
                   <input
                     type="text"
                     bind:value={editGroupName}
-                    class="flex-1 bg-[#1e1e1e] text-sm px-3 py-1.5 rounded-lg focus:outline-none text-white border border-[#AEB291]/45"
+                    class="flex-1 bg-[#171a1d] text-sm px-3 py-1.5 rounded-lg focus:outline-none text-white border border-[#AEB291]/45"
                     onblur={renameGroup}
                     onkeydown={(e) => {
                       if (e.key === "Enter") renameGroup();
@@ -1413,7 +1413,7 @@
                     editingGroup = group;
                     editGroupName = group;
                   }}
-                  class="p-2 text-zinc-500 hover:text-white hover:bg-[#333] rounded-lg transition-all"
+                  class="p-2 text-zinc-500 hover:text-white hover:bg-[#2a3038] rounded-lg transition-all"
                   title="Rename"
                 >
                   <svg
@@ -1433,7 +1433,7 @@
                 </button>
                 <button
                   onclick={() => exportGroup(group)}
-                  class="p-2 text-zinc-500 hover:text-white hover:bg-[#333] rounded-lg transition-all"
+                  class="p-2 text-zinc-500 hover:text-white hover:bg-[#2a3038] rounded-lg transition-all"
                   title="Export Group to .TXT"
                 >
                   <svg
@@ -1480,7 +1480,7 @@
               class="flex flex-col items-center justify-center py-12 text-center"
             >
               <div
-                class="w-16 h-16 bg-[#252525] rounded-2xl flex items-center justify-center mb-4 text-zinc-700"
+                class="w-16 h-16 bg-[#2a2f35] rounded-2xl flex items-center justify-center mb-4 text-zinc-700"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -1513,10 +1513,10 @@
       class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
     >
       <div
-        class="w-full max-w-[280px] bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in zoom-in-95 duration-200"
+        class="w-full max-w-[280px] bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in zoom-in-95 duration-200"
       >
         <div
-          class="px-4 py-3 border-b border-[#333] flex justify-between items-center bg-[#1e1e1e]"
+          class="px-4 py-3 border-b border-[#333] flex justify-between items-center bg-[#171a1d]"
         >
           <span
             class="text-[10px] font-bold uppercase tracking-widest text-zinc-500"
@@ -1528,12 +1528,12 @@
           >
         </div>
 
-        <div class="p-2 border-b border-[#333] bg-[#1a1a1a]">
+        <div class="p-2 border-b border-[#333] bg-[#171a1d]">
           <input
             type="text"
             bind:value={newGroupName}
             placeholder="New or search group..."
-            class="w-full bg-[#252525] border border-[#333] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium"
+            class="w-full bg-[#2a2f35] border border-[#333] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium"
             onkeydown={(e) => {
               if (e.key === "Enter") moveItemToGroup();
               if (e.key === "Escape") isCategorizing = false;
@@ -1550,7 +1550,7 @@
                 newGroupName = group;
                 moveItemToGroup();
               }}
-              class="w-full text-left px-3 py-2 text-xs hover:bg-[#2a2a2a] rounded-lg transition-all flex items-center space-x-2 text-zinc-400 hover:text-white"
+              class="w-full text-left px-3 py-2 text-xs hover:bg-[#343a42] rounded-lg transition-all flex items-center space-x-2 text-zinc-400 hover:text-white"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -1593,7 +1593,7 @@
           {/if}
         </div>
 
-        <div class="p-2 border-t border-[#333] bg-[#1a1a1a] flex justify-end">
+        <div class="p-2 border-t border-[#333] bg-[#171a1d] flex justify-end">
           <button
             onclick={moveItemToGroup}
             class="px-4 py-1.5 bg-[#3F423C] text-white rounded-lg text-xs font-bold hover:bg-[#4d514a] transition-all"
@@ -1621,7 +1621,7 @@
       tabindex="-1"
     >
       <div
-        class="w-full max-w-2xl bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+        class="w-full max-w-2xl bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
       >
         <div
           class="p-6 border-b border-[#333] flex items-center justify-between"
@@ -1676,15 +1676,15 @@
               Opening Windows
             </h4>
             <div class="space-y-2 text-sm">
-              <div class="flex items-start gap-3 p-3 bg-[#252525] rounded-lg">
+              <div class="flex items-start gap-3 p-3 bg-[#2a2f35] rounded-lg">
                 <div class="flex-shrink-0 w-32 text-zinc-400 font-mono text-xs">
                   <kbd
-                    class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333]"
+                    class="px-2 py-1 bg-[#171a1d] rounded border border-[#333]"
                     >{altKey}</kbd
                   >
                   +
                   <kbd
-                    class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333]"
+                    class="px-2 py-1 bg-[#171a1d] rounded border border-[#333]"
                     >V</kbd
                   >
                 </div>
@@ -1695,7 +1695,7 @@
                   </div>
                 </div>
               </div>
-              <div class="flex items-start gap-3 p-3 bg-[#252525] rounded-lg">
+              <div class="flex items-start gap-3 p-3 bg-[#2a2f35] rounded-lg">
                 <div class="flex-shrink-0 w-32 text-zinc-400 text-xs">
                   Tray Icon
                 </div>
@@ -1718,29 +1718,29 @@
             </h4>
             <div class="space-y-2 text-sm">
               <div
-                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
               >
                 <span class="text-zinc-300">Navigate Down</span>
                 <kbd
-                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
                   >↓</kbd
                 >
               </div>
               <div
-                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
               >
                 <span class="text-zinc-300">Navigate Up</span>
                 <kbd
-                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
                   >↑</kbd
                 >
               </div>
               <div
-                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
               >
                 <span class="text-zinc-300">Close Window</span>
                 <kbd
-                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
                   >Esc</kbd
                 >
               </div>
@@ -1756,54 +1756,54 @@
             </h4>
             <div class="space-y-2 text-sm">
               <div
-                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
               >
                 <span class="text-zinc-300">Copy Selected</span>
                 <kbd
-                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
                   >Enter</kbd
                 >
               </div>
               <div
-                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
               >
                 <span class="text-zinc-300">Delete Item</span>
                 <div class="flex items-center gap-1">
                   <kbd
-                    class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                    class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
                     >Delete</kbd
                   >
                   /
                   <kbd
-                    class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                    class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
                     >{modKey}+{deleteKey}</kbd
                   >
                 </div>
               </div>
               <div
-                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
               >
                 <span class="text-zinc-300">Pin/Unpin Item</span>
                 <kbd
-                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
                   >{modKey}+P</kbd
                 >
               </div>
               <div
-                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
               >
                 <span class="text-zinc-300">Categorize Item</span>
                 <kbd
-                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
                   >{modKey}+C</kbd
                 >
               </div>
               <div
-                class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
+                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
               >
                 <span class="text-zinc-300">Manage Groups</span>
                 <kbd
-                  class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
+                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
                   >{modKey}+G</kbd
                 >
               </div>
@@ -1891,7 +1891,7 @@
       tabindex="-1"
     >
       <div
-        class="w-full max-w-md bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+        class="w-full max-w-md bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
       >
         <div
           class="p-6 border-b border-[#333] flex items-center justify-between"
@@ -1941,7 +1941,7 @@
           </div>
 
           <div class="space-y-4">
-            <div class="p-4 bg-[#252525] rounded-xl">
+            <div class="p-4 bg-[#2a2f35] rounded-xl">
               <div class="text-xs text-zinc-500 uppercase tracking-wider mb-2">
                 Developer
               </div>
@@ -1954,7 +1954,7 @@
               href="https://www.linkedin.com/in/abhijith-p-subash-the-engineer/"
               target="_blank"
               rel="noopener noreferrer"
-              class="block p-4 bg-[#252525] hover:bg-[#2a2a2a] rounded-xl transition-all group"
+              class="block p-4 bg-[#2a2f35] hover:bg-[#343a42] rounded-xl transition-all group"
             >
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
@@ -2033,7 +2033,7 @@
   <!-- Copied Toast Notification -->
   {#if showCopiedToast}
     <div
-      class="fixed bottom-4 right-4 bg-[#1e1e1e] border border-green-500/50 rounded-xl shadow-2xl shadow-green-500/20 px-4 py-3 flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-300 z-50"
+      class="fixed bottom-4 right-4 bg-[#171a1d] border border-green-500/50 rounded-xl shadow-2xl shadow-green-500/20 px-4 py-3 flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-300 z-50"
     >
       <div
         class="flex items-center justify-center w-5 h-5 bg-green-500/20 rounded-full"
