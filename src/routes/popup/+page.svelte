@@ -13,11 +13,20 @@
   let selectedIndex = $state(0);
   let container = $state<HTMLDivElement | null>(null);
   let searchInput = $state<HTMLInputElement | null>(null);
+  let shell = $state<HTMLDivElement | null>(null);
 
   // Navigation & Group state
   let currentCategory = $state<string | null>(null);
   let showGroupSelector = $state<number | null>(null);
   let newGroupName = $state("");
+  let hoverPreview = $state<{
+    itemId: number;
+    content: string;
+    x: number;
+    y: number;
+    category: string | null;
+  } | null>(null);
+  const LONG_CONTENT_PREVIEW_THRESHOLD = 140;
 
   // --- DERIVED ---
   let filteredCategories = $derived(
@@ -60,6 +69,7 @@
 
   async function copyAndPaste(item: ClipboardItem) {
     try {
+      hoverPreview = null;
       // Close popup and trigger paste in the previous app
       await invoke("close_window", { label: "popup" });
       await invoke("copy_item_and_paste", { id: item.id });
@@ -100,6 +110,7 @@
       } else if (currentCategory) {
         currentCategory = null; // $effect will trigger loadData
       } else {
+        hoverPreview = null;
         invoke("close_window", { label: "popup" });
       }
     } else if (e.key === "ArrowDown") {
@@ -151,6 +162,62 @@
     });
   }
 
+  function fullPreviewContent(item: ClipboardItem): string {
+    const raw = item.raw_content?.trim();
+    if (raw) return raw;
+    return clipPreview(item.raw_content, item.content_type);
+  }
+
+  function shouldShowHoverPreview(item: ClipboardItem): boolean {
+    return fullPreviewContent(item).length > LONG_CONTENT_PREVIEW_THRESHOLD;
+  }
+
+  function updateHoverPreviewPosition(e: MouseEvent, item: ClipboardItem) {
+    if (!shell) return;
+    const rect = shell.getBoundingClientRect();
+    const panelWidth = 300;
+    const panelHeight = 220;
+    const margin = 10;
+
+    let x = e.clientX - rect.left + 14;
+    if (x + panelWidth + margin > rect.width) {
+      x = Math.max(margin, e.clientX - rect.left - panelWidth - 14);
+    }
+
+    let y = e.clientY - rect.top - 14;
+    if (y + panelHeight + margin > rect.height) {
+      y = rect.height - panelHeight - margin;
+    }
+    y = Math.max(margin, y);
+
+    hoverPreview = {
+      itemId: item.id,
+      content: fullPreviewContent(item),
+      x,
+      y,
+      category: item.category ?? null,
+    };
+  }
+
+  function handleItemHoverStart(e: MouseEvent, item: ClipboardItem) {
+    if (showGroupSelector !== null || !shouldShowHoverPreview(item)) {
+      hoverPreview = null;
+      return;
+    }
+    updateHoverPreviewPosition(e, item);
+  }
+
+  function handleItemHoverMove(e: MouseEvent, item: ClipboardItem) {
+    if (hoverPreview?.itemId !== item.id) return;
+    updateHoverPreviewPosition(e, item);
+  }
+
+  function handleItemHoverEnd(item: ClipboardItem) {
+    if (hoverPreview?.itemId === item.id) {
+      hoverPreview = null;
+    }
+  }
+
   // --- EFFECTS & LIFECYCLE ---
   // This automatically handles searching and category switching
   $effect(() => {
@@ -169,6 +236,7 @@
           currentCategory = null;
           searchQuery = "";
           selectedIndex = 0;
+          hoverPreview = null;
           loadData(); // Force reload when window pops up
           tick().then(() => {
             searchInput?.focus();
@@ -237,15 +305,16 @@
 </script>
 
 <div
-  class="popup-shell flex flex-col h-screen bg-[#1e1e1e] text-zinc-300 overflow-hidden border border-[#333] rounded-lg font-sans selection:bg-[#FF8A3D]/30 shadow-2xl relative"
+  bind:this={shell}
+  class="popup-shell flex flex-col h-screen bg-[#171a1d] text-zinc-300 overflow-hidden border border-[#333] rounded-lg font-sans selection:bg-[#FF8A3D]/30 shadow-2xl relative"
 >
   <div
-    class="px-3 py-2 border-b border-[#333] bg-[#1e1e1e] flex items-center gap-2"
+    class="px-3 py-2 border-b border-[#333] bg-[#171a1d] flex items-center gap-2"
   >
     {#if currentCategory}
       <button
         onclick={() => (currentCategory = null)}
-        class="bg-[#333] hover:bg-[#444] text-[10px] px-2 py-0.5 rounded text-white flex items-center"
+        class="bg-[#343a42] hover:bg-[#2a3038] text-[10px] px-2 py-0.5 rounded text-white flex items-center"
       >
         ← {currentCategory}
       </button>
@@ -261,14 +330,14 @@
     />
   </div>
 
-  <div class="flex-1 overflow-y-auto custom-scrollbar" bind:this={container}>
+  <div class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1.5" bind:this={container}>
     {#if !currentCategory}
       {#each filteredCategories as cat, i}
         <div
-          class="w-full px-3 py-2 flex items-center justify-between group cursor-default border-b border-[#2a2a2a]/30 {i ===
+          class="w-full px-3 py-2.5 flex items-center justify-between group cursor-default border rounded-md border-[#333]/70 transition-all {i ===
           selectedIndex
-            ? 'bg-[#333] text-white'
-            : 'hover:bg-[#2a2a2a]'}"
+            ? 'bg-[#2a2f35] text-white shadow-sm'
+            : 'hover:bg-[#343a42]/90'}"
           onclick={() => {
             currentCategory = cat;
             searchQuery = "";
@@ -306,11 +375,14 @@
     {#each history as item, i}
       {@const idx = i + (currentCategory ? 0 : filteredCategories.length)}
       <div
-        class="w-full px-3 py-2 flex items-center justify-between group cursor-default border-b border-[#2a2a2a]/50 {idx ===
+        class="w-full px-3 py-2.5 flex items-center justify-between gap-3 group cursor-default border rounded-md border-[#333]/70 transition-all {idx ===
         selectedIndex
-          ? 'bg-[#3d3d3d] text-white'
-          : 'hover:bg-[#2a2a2a]'}"
+          ? 'bg-[#2a2f35] text-white shadow-sm'
+          : 'hover:bg-[#343a42]/90'}"
         onclick={() => copyAndPaste(item)}
+        onmouseenter={(e) => handleItemHoverStart(e, item)}
+        onmousemove={(e) => handleItemHoverMove(e, item)}
+        onmouseleave={() => handleItemHoverEnd(item)}
         onkeydown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -324,7 +396,7 @@
         <div class="flex items-center space-x-3 min-w-0 flex-1">
           <!-- Icon Indicator -->
           <div
-            class="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded bg-[#2a2a2a] text-zinc-500"
+            class="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded bg-[#2a3038] text-zinc-500"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -341,9 +413,7 @@
             </svg>
           </div>
 
-          <p
-            class="text-[13px] font-normal leading-tight flex-1 break-words whitespace-pre-wrap line-clamp-4"
-          >
+          <p class="text-[13px] text-zinc-200 font-normal leading-relaxed flex-1 break-words whitespace-pre-wrap line-clamp-4">
             {clipPreview(item.raw_content, item.content_type)}
           </p>
         </div>
@@ -354,7 +424,7 @@
               e.stopPropagation();
               togglePermanent(item);
             }}
-            class="p-1 hover:bg-[#444] rounded transition-all {item.is_permanent
+            class="p-1 hover:bg-[#343a42] rounded transition-all {item.is_permanent
               ? 'text-amber-500 opacity-100'
               : 'text-zinc-500 opacity-0 group-hover:opacity-100'}"
             title={item.is_permanent ? "Unpin" : "Pin"}
@@ -381,7 +451,7 @@
               e.stopPropagation();
               showGroupSelector = item.id;
             }}
-            class="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#444] rounded transition-all"
+            class="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#343a42] rounded transition-all"
             title="Save to group"
           >
             <svg
@@ -398,7 +468,7 @@
               e.stopPropagation();
               deleteItem(item);
             }}
-            class="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#444] rounded transition-all"
+            class="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#343a42] rounded transition-all"
             title="Delete"
           >
             <svg
@@ -431,15 +501,39 @@
     {/each}
   </div>
 
+  <!-- Floating preview panel on hover for long content items -->
+  <!-- {#if hoverPreview && showGroupSelector === null}
+    <div
+      class="absolute z-40 pointer-events-none w-[300px] max-h-[400px] bg-[#171a1d] border border-[#333] rounded-md shadow-2xl shadow-black/40 overflow-hidden"
+      style={`left:${hoverPreview.x}px; top:${hoverPreview.y}px;`}
+    >
+      <div
+        class="px-3 py-1.5 border-b border-[#333] bg-[#2a2f35] flex items-center justify-between"
+      >
+        <span class="text-[9px] font-bold uppercase tracking-wider text-[#FF8A3D]"
+          >Full Preview</span
+        >
+        {#if hoverPreview.category}
+          <span class="text-[9px] font-bold uppercase tracking-wider text-zinc-500"
+            >{hoverPreview.category}</span
+          >
+        {/if}
+      </div>
+      <pre
+        class="p-3 text-[8px] leading-relaxed text-zinc-200 whitespace-pre-wrap max-h-[300px] overflow-y-auto "
+      >{hoverPreview.content}</pre>
+    </div>
+  {/if} -->
+
   {#if showGroupSelector !== null}
     <div
       class="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
     >
       <div
-        class="bg-[#2a2a2a] w-full max-w-[240px] rounded-lg border border-[#444] shadow-2xl overflow-hidden flex flex-col max-h-[80%]"
+        class="bg-[#171a1d] w-full max-w-[240px] rounded-lg border border-[#333] shadow-2xl overflow-hidden flex flex-col max-h-[80%]"
       >
         <div
-          class="px-3 py-2 border-b border-[#444] flex justify-between items-center"
+          class="px-3 py-2 border-b border-[#333] flex justify-between items-center"
         >
           <span
             class="text-[10px] font-bold uppercase tracking-tight text-zinc-400"
@@ -454,7 +548,7 @@
           {#each categories as cat}
             <button
               onclick={() => addToGroup(showGroupSelector!, cat)}
-              class="w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#3d3d3d] rounded flex items-center gap-2"
+              class="w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#343a42] rounded flex items-center gap-2"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -471,12 +565,12 @@
             </button>
           {/each}
         </div>
-        <div class="p-2 border-t border-[#444] bg-[#222]">
+        <div class="p-2 border-t border-[#333] bg-[#171a1d]">
           <input
             type="text"
             bind:value={newGroupName}
             placeholder="New group..."
-            class="w-full bg-[#1a1a1a] border border-[#333] rounded px-2 py-1 text-[11px] focus:outline-none mb-1.5"
+            class="w-full bg-[#171a1d] border border-[#333] rounded px-2 py-1 text-[11px] text-white placeholder:text-zinc-600 focus:outline-none focus:border-[#AEB291]/45 mb-1.5"
             onkeydown={(e) =>
               e.key === "Enter" && createAndAddToGroup(showGroupSelector!)}
           />
@@ -491,7 +585,7 @@
   {/if}
 
   <div
-    class="px-3 py-1 border-t border-[#333] bg-[#1a1a1a] flex justify-between items-center text-[8px] text-zinc-600 font-bold uppercase tracking-tighter"
+    class="px-3 py-1 border-t border-[#333] bg-[#171a1d] flex justify-between items-center text-[8px] text-zinc-600 font-bold uppercase tracking-tighter"
   >
     <span
       >{history.length} Clips {currentCategory
