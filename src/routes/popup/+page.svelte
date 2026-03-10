@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import type { ClipboardItem, Snippet } from "$lib/types";
+  import type { ClipboardItem } from "$lib/types";
   import { listen } from "@tauri-apps/api/event";
   import { buildSearchQuery, clipPreview } from "$lib/filters";
   import "../../app.css";
@@ -18,7 +18,6 @@
   let currentCategory = $state<string | null>(null);
   let showGroupSelector = $state<number | null>(null);
   let newGroupName = $state("");
-  let snippets = $state<Snippet[]>([]);
 
   // --- DERIVED ---
   let filteredCategories = $derived(
@@ -47,7 +46,6 @@
 
       history = historyData;
       categories = catData;
-      snippets = (await invoke("list_snippets")) as Snippet[];
 
       // Keep selection in bounds
       const totalItems =
@@ -141,55 +139,6 @@
       if (item) {
         togglePermanent(item);
       }
-    } else if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      runCommandPalette();
-    }
-  }
-
-  async function runCommandPalette() {
-    const cmd = prompt(
-      "Command:\n- t <transform>\n- sn save <name>\n- sn paste <name>"
-    );
-    if (!cmd) return;
-    const catsCount = currentCategory ? 0 : filteredCategories.length;
-    const selected = history[selectedIndex - catsCount];
-    const parts = cmd.trim().split(/\s+/);
-
-    if (parts[0] === "t" && parts[1] && selected) {
-      const transformed = (await invoke("transform_content", {
-        content: selected.raw_content,
-        transform: parts[1],
-      })) as string;
-      await navigator.clipboard.writeText(transformed);
-      await invoke("close_window", { label: "popup" });
-      await invoke("paste_item");
-      return;
-    }
-
-    if (parts[0] === "sn" && parts[1] === "save" && parts[2]) {
-      const name = parts.slice(2).join(" ");
-      const body = prompt(`Snippet body for "${name}"`, selected?.raw_content || "");
-      if (!body) return;
-      await invoke("save_snippet", { name, body });
-      await loadData();
-      return;
-    }
-
-    if (parts[0] === "sn" && parts[1] === "paste" && parts[2]) {
-      const name = parts.slice(2).join(" ");
-      const snippet = snippets.find((s) => s.name === name);
-      if (!snippet) {
-        alert(`Snippet "${name}" not found`);
-        return;
-      }
-      const rendered = (await invoke("render_snippet", {
-        body: snippet.body,
-        clipboard: selected?.raw_content || "",
-      })) as string;
-      await navigator.clipboard.writeText(rendered);
-      await invoke("close_window", { label: "popup" });
-      await invoke("paste_item");
     }
   }
 
@@ -309,7 +258,6 @@
         ? `Search in ${currentCategory}...`
         : "Search history & groups..."}
       class="flex-1 bg-transparent text-sm focus:outline-none placeholder:text-zinc-600 font-medium py-1"
-      autofocus
     />
   </div>
 
@@ -324,6 +272,13 @@
           onclick={() => {
             currentCategory = cat;
             searchQuery = "";
+          }}
+          onkeydown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              currentCategory = cat;
+              searchQuery = "";
+            }
           }}
           role="button"
           tabindex="0"
@@ -356,6 +311,12 @@
           ? 'bg-[#3d3d3d] text-white'
           : 'hover:bg-[#2a2a2a]'}"
         onclick={() => copyAndPaste(item)}
+        onkeydown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            copyAndPaste(item);
+          }
+        }}
         role="button"
         tabindex="0"
         data-index={idx}

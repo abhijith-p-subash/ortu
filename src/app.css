@@ -1,3 +1,43 @@
 @import "tailwindcss/base";
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
+
+:root {
+  --surface-0: #121315;
+  --surface-1: #1b1d20;
+  --surface-2: #24272b;
+  --stroke: #30343a;
+  --text-primary: #f5f7fa;
+  --text-secondary: #aeb6c2;
+  --accent: #ef4444;
+}
+
+html,
+body {
+  background:
+    radial-gradient(1200px 600px at 20% -20%, rgba(239, 68, 68, 0.08), transparent),
+    linear-gradient(180deg, #101113 0%, #121315 100%);
+  color: var(--text-primary);
+  font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #3a3f46 transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3a3f46, #2d3137);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}

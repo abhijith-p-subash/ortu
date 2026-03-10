@@ -6,7 +6,6 @@
   import { save, open } from "@tauri-apps/plugin-dialog";
   import { platform } from "@tauri-apps/plugin-os";
   import { getVersion } from "@tauri-apps/api/app";
-  import type { Snippet } from "$lib/types";
   import { buildSearchQuery, clipPreview } from "$lib/filters";
   import "../app.css";
 
@@ -41,7 +40,6 @@
   // Toast notification state
   let showCopiedToast = $state(false);
   let copiedToastTimer: number | null = null;
-  let snippets = $state<Snippet[]>([]);
 
   // Detect platform
   onMount(async () => {
@@ -81,67 +79,6 @@
     } catch (e) {
       console.error("Failed to load groups:", e);
     }
-  }
-
-  async function loadSnippets() {
-    try {
-      snippets = (await invoke("list_snippets")) as Snippet[];
-    } catch (e) {
-      console.error("Failed to load snippets:", e);
-    }
-  }
-
-  async function runCommandPalette() {
-    const cmd = prompt(
-      "Command palette:\n- t <trim|uppercase|lowercase|slugify|json_pretty|json_minify|base64_encode|base64_decode|url_encode|url_decode>\n- sn save <name>\n- sn paste <name>"
-    );
-    if (!cmd) return;
-
-    const selected = history[selectedIndex];
-    const parts = cmd.trim().split(/\s+/);
-    if (parts[0] === "t" && parts[1] && selected) {
-      try {
-        const transformed = (await invoke("transform_content", {
-          content: selected.raw_content,
-          transform: parts[1],
-        })) as string;
-        await navigator.clipboard.writeText(transformed);
-        await invoke("paste_item");
-      } catch (e) {
-        alert("Transform failed: " + e);
-      }
-      return;
-    }
-
-    if (parts[0] === "sn" && parts[1] === "save" && parts[2]) {
-      const name = parts.slice(2).join(" ");
-      const body = prompt(
-        `Snippet body for "${name}"`,
-        selected?.raw_content || ""
-      );
-      if (!body) return;
-      await invoke("save_snippet", { name, body });
-      await loadSnippets();
-      return;
-    }
-
-    if (parts[0] === "sn" && parts[1] === "paste" && parts[2]) {
-      const name = parts.slice(2).join(" ");
-      const snippet = snippets.find((s) => s.name === name);
-      if (!snippet) {
-        alert(`Snippet "${name}" not found`);
-        return;
-      }
-      const rendered = (await invoke("render_snippet", {
-        body: snippet.body,
-        clipboard: selected?.raw_content || "",
-      })) as string;
-      await navigator.clipboard.writeText(rendered);
-      await invoke("paste_item");
-      return;
-    }
-
-    alert("Unknown command");
   }
 
   async function createGroup() {
@@ -405,9 +342,6 @@
       e.preventDefault();
       isViewingGroups = !isViewingGroups;
       if (isViewingGroups) loadGroups();
-    } else if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      runCommandPalette();
     }
   }
 
@@ -435,7 +369,6 @@
   onMount(() => {
     loadHistory();
     loadGroups();
-    loadSnippets();
     window.addEventListener("keydown", handleKeydown);
 
     let unlistenFocus: () => void;
@@ -819,7 +752,6 @@
                 type="text"
                 bind:value={editGroupName}
                 class="flex-1 bg-transparent text-sm px-3 py-2 focus:outline-none text-white border-b border-red-500/50"
-                autofocus
                 onblur={renameGroup}
                 onkeydown={(e) => {
                   if (e.key === "Enter") renameGroup();
@@ -955,6 +887,7 @@
             <button
               onclick={() => (selectedGroup = null)}
               class="ml-2 text-red-500/50 hover:text-red-500"
+              aria-label="Clear selected group"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -990,6 +923,12 @@
                 : ''}"
               onclick={() => {
                 selectedIndex = i;
+              }}
+              onkeydown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  selectedIndex = i;
+                }
               }}
               role="button"
               tabindex="0"
@@ -1131,14 +1070,18 @@
                   </div>
                   {#if item.groups && item.groups.length > 0}
                     {#each item.groups as group}
-                      <span
-                        class="flex items-center gap-1 text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20 cursor-pointer"
-                        onclick={(e) => {
-                          e.stopPropagation();
-                          selectedGroup = group;
-                        }}
+                      <div
+                        class="flex items-center gap-1 text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20"
                       >
-                        {group}
+                        <button
+                          class="hover:text-white"
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            selectedGroup = group;
+                          }}
+                        >
+                          {group}
+                        </button>
                         {#if selectedGroup === group}
                           <button
                             onclick={(e) => {
@@ -1151,18 +1094,18 @@
                             ×
                           </button>
                         {/if}
-                      </span>
+                      </div>
                     {/each}
                   {:else if item.category}
-                    <span
-                      class="text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20 cursor-pointer"
+                    <button
+                      class="text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20"
                       onclick={(e) => {
                         e.stopPropagation();
                         selectedGroup = item.category;
                       }}
                     >
                       {item.category}
-                    </span>
+                    </button>
                   {/if}
                   <span class="text-[10px] text-zinc-600 font-medium">
                     {new Date(item.created_at).toLocaleString([], {
@@ -1380,6 +1323,7 @@
           <button
             onclick={() => (isViewingGroups = false)}
             class="text-zinc-500 hover:text-white"
+            aria-label="Close manage groups dialog"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -1446,7 +1390,6 @@
                     type="text"
                     bind:value={editGroupName}
                     class="flex-1 bg-[#1e1e1e] text-sm px-3 py-1.5 rounded-lg focus:outline-none text-white border border-red-500/50"
-                    autofocus
                     onblur={renameGroup}
                     onkeydown={(e) => {
                       if (e.key === "Enter") renameGroup();
@@ -1592,7 +1535,6 @@
             bind:value={newGroupName}
             placeholder="New or search group..."
             class="w-full bg-[#252525] border border-[#333] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-red-500/50 transition-all font-medium"
-            autofocus
             onkeydown={(e) => {
               if (e.key === "Enter") moveItemToGroup();
               if (e.key === "Escape") isCategorizing = false;
@@ -1672,6 +1614,12 @@
       onclick={(e) => {
         if (e.target === e.currentTarget) showHelpModal = false;
       }}
+      onkeydown={(e) => {
+        if (e.key === "Escape") showHelpModal = false;
+      }}
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
     >
       <div
         class="w-full max-w-2xl bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
@@ -1698,6 +1646,7 @@
           <button
             onclick={() => (showHelpModal = false)}
             class="text-zinc-500 hover:text-white transition-colors"
+            aria-label="Close help dialog"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -1935,6 +1884,12 @@
       onclick={(e) => {
         if (e.target === e.currentTarget) showAboutModal = false;
       }}
+      onkeydown={(e) => {
+        if (e.key === "Escape") showAboutModal = false;
+      }}
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
     >
       <div
         class="w-full max-w-md bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
@@ -1956,6 +1911,7 @@
           <button
             onclick={() => (showAboutModal = false)}
             class="text-zinc-500 hover:text-white transition-colors"
+            aria-label="Close about dialog"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
