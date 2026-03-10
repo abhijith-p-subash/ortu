@@ -237,7 +237,7 @@
 </script>
 
 <div
-  class="flex flex-col h-screen bg-[#1e1e1e] text-zinc-300 overflow-hidden border border-[#333] rounded-lg font-sans selection:bg-red-500/30 shadow-2xl relative"
+  class="popup-shell flex flex-col h-screen bg-[#1e1e1e] text-zinc-300 overflow-hidden border border-[#333] rounded-lg font-sans selection:bg-[#FF8A3D]/30 shadow-2xl relative"
 >
   <div
     class="px-3 py-2 border-b border-[#333] bg-[#1e1e1e] flex items-center gap-2"
@@ -287,7 +287,7 @@
           <div class="flex items-center space-x-3">
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              class="w-3.5 h-3.5 text-red-500/70"
+              class="w-3.5 h-3.5 text-[#FF8A3D]/75"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -458,7 +458,7 @@
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                class="w-3 h-3 text-red-500/50"
+                class="w-3 h-3 text-[#FF8A3D]/60"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -482,7 +482,7 @@
           />
           <button
             onclick={() => createAndAddToGroup(showGroupSelector!)}
-            class="w-full bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold py-1 rounded"
+            class="w-full bg-[#3F423C] hover:bg-[#4d514a] text-white text-[10px] font-bold py-1 rounded"
             >CREATE & SAVE</button
           >
         </div>
@@ -506,10 +506,21 @@
 </div>
 
 <style>
+  :global(html) {
+    border-radius: 0.175rem !important;
+    overflow: hidden;
+    background: transparent;
+  }
+
   :global(body) {
     margin: 0;
     overflow: hidden;
+    border-radius: 0.175rem !important;
     background: transparent;
+  }
+
+  .popup-shell {
+    border-radius: 0.175rem !important;
   }
   .custom-scrollbar::-webkit-scrollbar {
     width: 3px;

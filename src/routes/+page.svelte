@@ -283,8 +283,7 @@
 
   async function copyAndPaste(item: ClipboardItem) {
     try {
-      await invoke("close_window", { label: "main" });
-      await invoke("copy_item_and_paste", { id: item.id });
+      await invoke("copy_item_to_clipboard", { id: item.id });
 
       // Show copied toast
       if (copiedToastTimer) clearTimeout(copiedToastTimer);
@@ -294,7 +293,7 @@
         copiedToastTimer = null;
       }, 2000);
     } catch (err) {
-      console.error("Failed to copy and paste: ", err);
+      console.error("Failed to copy: ", err);
     }
   }
 
@@ -443,7 +442,7 @@
 </script>
 
 <div
-  class="flex flex-col h-screen bg-[#1a1a1a] text-zinc-300 overflow-hidden font-sans selection:bg-red-500/30"
+  class="flex flex-col h-screen bg-[#1a1a1a] text-zinc-300 overflow-hidden font-sans selection:bg-[#FF8A3D]/30"
 >
   <!-- Top Bar / Header -->
   <header
@@ -451,7 +450,7 @@
   >
     <div class="flex items-center space-x-3">
       <div
-        class="w-8 h-8 rounded-full flex items-center justify-center shadow-lg shadow-red-500/20"
+        class="w-8 h-8 rounded-full flex items-center justify-center shadow-lg shadow-[#FF8A3D]/25"
       >
         <img src="/logo.png" alt="" srcset="" />
       </div>
@@ -527,7 +526,7 @@
       </button>
       <button
         onclick={() => (isViewingGroups = true)}
-        class="flex items-center space-x-2 px-4 py-1.5 bg-red-500 hover:bg-red-600 rounded-md shadow-lg shadow-red-500/20 text-white transition-all text-xs font-bold"
+        class="flex items-center space-x-2 px-4 py-1.5 bg-[#3F423C] hover:bg-[#4d514a] rounded-md shadow-lg shadow-[#3F423C]/25 text-white transition-all text-xs font-bold"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -604,7 +603,7 @@
         <button
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           null
-            ? 'bg-red-500/10 text-red-500 font-bold'
+            ? 'bg-[#AEB291]/18 text-[#3F423C] font-bold'
             : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
           onclick={() => {
             selectedGroup = null;
@@ -641,7 +640,7 @@
         <button
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           'URL'
-            ? 'bg-red-500/10 text-red-500 font-bold'
+            ? 'bg-[#AEB291]/18 text-[#3F423C] font-bold'
             : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
           onclick={() => (selectedGroup = "URL")}
         >
@@ -672,7 +671,7 @@
         <button
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           'Images'
-            ? 'bg-red-500/10 text-red-500 font-bold'
+            ? 'bg-[#AEB291]/18 text-[#3F423C] font-bold'
             : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
           onclick={() => (selectedGroup = "Images")}
         >
@@ -699,7 +698,7 @@
         <button
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           'Text'
-            ? 'bg-red-500/10 text-red-500 font-bold'
+            ? 'bg-[#AEB291]/18 text-[#3F423C] font-bold'
             : 'text-zinc-400 hover:bg-[#2a2a2a]'}"
           onclick={() => (selectedGroup = "Text")}
         >
@@ -751,7 +750,7 @@
               <input
                 type="text"
                 bind:value={editGroupName}
-                class="flex-1 bg-transparent text-sm px-3 py-2 focus:outline-none text-white border-b border-red-500/50"
+                class="flex-1 bg-transparent text-sm px-3 py-2 focus:outline-none text-white border-b border-[#AEB291]/45"
                 onblur={renameGroup}
                 onkeydown={(e) => {
                   if (e.key === "Enter") renameGroup();
@@ -762,7 +761,7 @@
               <button
                 class="flex-1 text-left px-3 py-2 text-sm {selectedGroup ===
                 group
-                  ? 'text-red-500 font-bold'
+                  ? 'text-[#3F423C] font-bold'
                   : 'text-zinc-400'}"
                 onclick={() => {
                   selectedGroup = group;
@@ -821,7 +820,7 @@
                 </button>
                 <button
                   onclick={() => deleteGroup(group)}
-                  class="p-1 hover:text-red-500"
+                  class="p-1 hover:text-[#FF8A3D]"
                   title="Delete"
                 >
                   <svg
@@ -873,20 +872,20 @@
             placeholder={selectedGroup
               ? `Search in ${selectedGroup}...`
               : "Search all clips..."}
-            class="w-full bg-[#1e1e1e] border border-[#333] rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-red-500/50 transition-all placeholder:text-zinc-600 font-medium"
+            class="w-full bg-[#1e1e1e] border border-[#333] rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all placeholder:text-zinc-600 font-medium"
           />
         </div>
         {#if selectedGroup}
           <div
-            class="flex items-center bg-red-500/10 border border-red-500/20 rounded-md py-1.5 px-3"
+            class="flex items-center bg-[#AEB291]/18 border border-[#AEB291]/35 rounded-md py-1.5 px-3"
           >
             <span
-              class="text-[10px] font-bold text-red-500 uppercase tracking-widest"
+              class="text-[10px] font-bold text-[#FF8A3D] uppercase tracking-widest"
               >{selectedGroup}</span
             >
             <button
               onclick={() => (selectedGroup = null)}
-              class="ml-2 text-red-500/50 hover:text-red-500"
+              class="ml-2 text-[#FF8A3D]/60 hover:text-[#FF8A3D]"
               aria-label="Clear selected group"
             >
               <svg
@@ -919,7 +918,7 @@
             <div
               class="w-full p-4 rounded-xl border border-[#333] bg-[#1e1e1e] hover:bg-[#252525] transition-all group flex flex-col space-y-3 cursor-default
                             {i === selectedIndex
-                ? 'ring-2 ring-red-500/50 bg-[#252525]'
+                ? 'ring-2 ring-[#FF8A3D]/50 bg-[#252525]'
                 : ''}"
               onclick={() => {
                 selectedIndex = i;
@@ -958,7 +957,7 @@
                             expandedItems = [...expandedItems, item.id];
                           }
                         }}
-                        class="text-[10px] font-bold text-red-500/80 hover:text-red-500 mt-1 uppercase tracking-widest"
+                        class="text-[10px] font-bold text-[#FF8A3D]/85 hover:text-[#FF8A3D] mt-1 uppercase tracking-widest"
                       >
                         {expandedItems.includes(item.id)
                           ? "Collapse"
@@ -996,7 +995,7 @@
                     </svg>
                   </button>
                   <button
-                    class="p-2 rounded-lg hover:bg-[#333] hover:text-red-500 transition-colors text-zinc-600"
+                    class="p-2 rounded-lg hover:bg-[#333] hover:text-[#FF8A3D] transition-colors text-zinc-600"
                     onclick={(e) => {
                       e.stopPropagation();
                       categorizingItemId = item.id;
@@ -1022,7 +1021,7 @@
                     </svg>
                   </button>
                   <button
-                    class="p-2 rounded-lg hover:bg-red-500/10 hover:text-red-500 transition-colors text-zinc-600"
+                    class="p-2 rounded-lg hover:bg-[#AEB291]/18 hover:text-[#FF8A3D] transition-colors text-zinc-600"
                     onclick={(e) => {
                       e.stopPropagation();
                       deleteItem(item);
@@ -1071,10 +1070,10 @@
                   {#if item.groups && item.groups.length > 0}
                     {#each item.groups as group}
                       <div
-                        class="flex items-center gap-1 text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20"
+                        class="flex items-center gap-1 text-[9px] font-bold uppercase py-0.5 px-2 bg-[#AEB291]/18 text-[#FF8A3D] rounded-full border border-[#AEB291]/35"
                       >
                         <button
-                          class="hover:text-white"
+                          class=""
                           onclick={(e) => {
                             e.stopPropagation();
                             selectedGroup = group;
@@ -1098,7 +1097,7 @@
                     {/each}
                   {:else if item.category}
                     <button
-                      class="text-[9px] font-bold uppercase py-0.5 px-2 bg-red-500/10 text-red-500 rounded-full border border-red-500/20"
+                      class="text-[9px] font-bold uppercase py-0.5 px-2 bg-[#AEB291]/18 text-[#FF8A3D] rounded-full border border-[#AEB291]/35"
                       onclick={(e) => {
                         e.stopPropagation();
                         selectedGroup = item.category;
@@ -1115,13 +1114,13 @@
                   </span>
                 </div>
                 <button
-                  class="text-[10px] font-bold text-zinc-500 hover:text-red-500 uppercase tracking-widest flex items-center space-x-1"
+                  class="text-[10px] font-bold text-zinc-500 hover:text-[#FF8A3D] uppercase tracking-widest flex items-center space-x-1"
                   onclick={(e) => {
                     e.stopPropagation();
                     copyAndPaste(item);
                   }}
                 >
-                  <span>Copy & Paste</span>
+                  <span>Copy</span>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="12"
@@ -1189,7 +1188,7 @@
               type="checkbox"
               checked={exportSelectedGroups.length === 0}
               onchange={() => (exportSelectedGroups = [])}
-              class="rounded border-zinc-600 bg-[#2a2a2a] text-red-500 focus:ring-red-500"
+              class="rounded border-zinc-600 bg-[#2a2a2a] text-[#FF8A3D] focus:ring-[#AEB291]/55"
             />
             <span class="font-bold">All Data</span>
           </label>
@@ -1210,7 +1209,7 @@
                     );
                   }
                 }}
-                class="rounded border-zinc-600 bg-[#2a2a2a] text-red-500 focus:ring-red-500"
+                class="rounded border-zinc-600 bg-[#2a2a2a] text-[#FF8A3D] focus:ring-[#AEB291]/55"
               />
               <span>{group}</span>
             </label>
@@ -1223,7 +1222,7 @@
             onclick={() => (showExportModal = false)}>Cancel</button
           >
           <button
-            class="px-6 py-2 bg-red-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all"
+            class="px-6 py-2 bg-[#FF8A3D] text-white rounded-xl text-xs font-bold shadow-lg shadow-[#FF8A3D]/25 hover:bg-[#e67d36] transition-all"
             onclick={performExport}
             disabled={processingIO}
           >
@@ -1248,7 +1247,7 @@
           <label
             class="flex items-center space-x-3 p-3 border border-[#333] rounded-xl cursor-pointer hover:bg-[#2a2a2a] transition-colors {importMode ===
             'merge'
-              ? 'bg-[#2a2a2a] border-red-500/50'
+              ? 'bg-[#2a2a2a] border-[#AEB291]/45'
               : ''}"
           >
             <input
@@ -1256,7 +1255,7 @@
               name="importMode"
               value="merge"
               bind:group={importMode}
-              class="text-red-500 focus:ring-red-500 bg-[#1e1e1e] border-zinc-600"
+              class="text-[#FF8A3D] focus:ring-[#AEB291]/55 bg-[#1e1e1e] border-zinc-600"
             />
             <div>
               <div class="text-white text-xs font-bold">Merge</div>
@@ -1269,7 +1268,7 @@
           <label
             class="flex items-center space-x-3 p-3 border border-[#333] rounded-xl cursor-pointer hover:bg-[#2a2a2a] transition-colors {importMode ===
             'replace'
-              ? 'bg-[#2a2a2a] border-red-500/50'
+              ? 'bg-[#2a2a2a] border-[#AEB291]/45'
               : ''}"
           >
             <input
@@ -1277,7 +1276,7 @@
               name="importMode"
               value="replace"
               bind:group={importMode}
-              class="text-red-500 focus:ring-red-500 bg-[#1e1e1e] border-zinc-600"
+              class="text-[#FF8A3D] focus:ring-[#AEB291]/55 bg-[#1e1e1e] border-zinc-600"
             />
             <div>
               <div class="text-white text-xs font-bold">Replace</div>
@@ -1294,7 +1293,7 @@
             onclick={() => (showImportModal = false)}>Cancel</button
           >
           <button
-            class="px-6 py-2 bg-red-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all"
+            class="px-6 py-2 bg-[#FF8A3D] text-white rounded-xl text-xs font-bold shadow-lg shadow-[#FF8A3D]/25 hover:bg-[#e67d36] transition-all"
             onclick={performImport}
             disabled={processingIO}
           >
@@ -1349,14 +1348,14 @@
               type="text"
               bind:value={newGroupName}
               placeholder="New group name..."
-              class="flex-1 bg-[#252525] border border-[#333] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-red-500/50 transition-all font-medium"
+              class="flex-1 bg-[#252525] border border-[#333] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium"
               onkeydown={(e) => {
                 if (e.key === "Enter") createGroup();
               }}
             />
             <button
               onclick={createGroup}
-              class="px-6 py-2.5 bg-red-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all"
+              class="px-6 py-2.5 bg-[#3F423C] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#3F423C]/25 hover:bg-[#4d514a] transition-all"
             >
               Create Group
             </button>
@@ -1370,7 +1369,7 @@
             >
               <div class="flex items-center space-x-4 flex-1">
                 <div
-                  class="w-10 h-10 rounded-lg bg-[#1e1e1e] flex items-center justify-center text-red-500/70"
+                  class="w-10 h-10 rounded-lg bg-[#1e1e1e] flex items-center justify-center text-[#FF8A3D]/75"
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -1389,7 +1388,7 @@
                   <input
                     type="text"
                     bind:value={editGroupName}
-                    class="flex-1 bg-[#1e1e1e] text-sm px-3 py-1.5 rounded-lg focus:outline-none text-white border border-red-500/50"
+                    class="flex-1 bg-[#1e1e1e] text-sm px-3 py-1.5 rounded-lg focus:outline-none text-white border border-[#AEB291]/45"
                     onblur={renameGroup}
                     onkeydown={(e) => {
                       if (e.key === "Enter") renameGroup();
@@ -1457,7 +1456,7 @@
                 </button>
                 <button
                   onclick={() => deleteGroup(group)}
-                  class="p-2 text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                  class="p-2 text-zinc-500 hover:text-[#FF8A3D] hover:bg-[#AEB291]/18 rounded-lg transition-all"
                   title="Delete Group"
                 >
                   <svg
@@ -1534,7 +1533,7 @@
             type="text"
             bind:value={newGroupName}
             placeholder="New or search group..."
-            class="w-full bg-[#252525] border border-[#333] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-red-500/50 transition-all font-medium"
+            class="w-full bg-[#252525] border border-[#333] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium"
             onkeydown={(e) => {
               if (e.key === "Enter") moveItemToGroup();
               if (e.key === "Escape") isCategorizing = false;
@@ -1561,7 +1560,7 @@
                 fill="none"
                 stroke="currentColor"
                 stroke-width="2"
-                class="text-red-500/50"
+                class="text-[#FF8A3D]/60"
                 ><path
                   d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
                 ></path></svg
@@ -1572,7 +1571,7 @@
           {#if newGroupName && !groups.includes(newGroupName)}
             <button
               onclick={moveItemToGroup}
-              class="w-full text-left px-3 py-2 text-xs hover:bg-red-500/10 rounded-lg transition-all flex items-center space-x-2 text-red-500"
+              class="w-full text-left px-3 py-2 text-xs hover:bg-[#AEB291]/18 rounded-lg transition-all flex items-center space-x-2 text-[#FF8A3D]"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -1597,7 +1596,7 @@
         <div class="p-2 border-t border-[#333] bg-[#1a1a1a] flex justify-end">
           <button
             onclick={moveItemToGroup}
-            class="px-4 py-1.5 bg-red-500 text-white rounded-lg text-xs font-bold hover:bg-red-600 transition-all"
+            class="px-4 py-1.5 bg-[#3F423C] text-white rounded-lg text-xs font-bold hover:bg-[#4d514a] transition-all"
             disabled={!newGroupName.trim()}
           >
             Save
@@ -1636,7 +1635,7 @@
               fill="none"
               stroke="currentColor"
               stroke-width="2"
-              class="text-red-500"
+              class="text-[#FF8A3D]"
               ><circle cx="12" cy="12" r="10"></circle><path
                 d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"
               ></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg
@@ -1672,7 +1671,7 @@
           <!-- How to Open -->
           <div>
             <h4
-              class="text-sm font-bold text-red-500 mb-3 uppercase tracking-wider"
+              class="text-sm font-bold text-[#FF8A3D] mb-3 uppercase tracking-wider"
             >
               Opening Windows
             </h4>
@@ -1713,7 +1712,7 @@
           <!-- Navigation Shortcuts -->
           <div>
             <h4
-              class="text-sm font-bold text-red-500 mb-3 uppercase tracking-wider"
+              class="text-sm font-bold text-[#FF8A3D] mb-3 uppercase tracking-wider"
             >
               Navigation
             </h4>
@@ -1751,7 +1750,7 @@
           <!-- Action Shortcuts -->
           <div>
             <h4
-              class="text-sm font-bold text-red-500 mb-3 uppercase tracking-wider"
+              class="text-sm font-bold text-[#FF8A3D] mb-3 uppercase tracking-wider"
             >
               Actions
             </h4>
@@ -1759,7 +1758,7 @@
               <div
                 class="flex items-center justify-between p-2 hover:bg-[#252525] rounded"
               >
-                <span class="text-zinc-300">Copy & Paste Selected</span>
+                <span class="text-zinc-300">Copy Selected</span>
                 <kbd
                   class="px-2 py-1 bg-[#1a1a1a] rounded border border-[#333] text-xs"
                   >Enter</kbd
@@ -1814,48 +1813,48 @@
           <!-- Features -->
           <div>
             <h4
-              class="text-sm font-bold text-red-500 mb-3 uppercase tracking-wider"
+              class="text-sm font-bold text-[#FF8A3D] mb-3 uppercase tracking-wider"
             >
               Features
             </h4>
             <ul class="space-y-2 text-sm text-zinc-300">
               <li class="flex items-start gap-2">
-                <span class="text-red-500 mt-1">•</span>
+                <span class="text-[#FF8A3D] mt-1">•</span>
                 <span
                   ><strong class="text-white">Smart Groups:</strong> Automatically
                   categorizes URLs, Images, and Text</span
                 >
               </li>
               <li class="flex items-start gap-2">
-                <span class="text-red-500 mt-1">•</span>
+                <span class="text-[#FF8A3D] mt-1">•</span>
                 <span
                   ><strong class="text-white">Custom Groups:</strong> Create and
                   organize items into custom categories</span
                 >
               </li>
               <li class="flex items-start gap-2">
-                <span class="text-red-500 mt-1">•</span>
+                <span class="text-[#FF8A3D] mt-1">•</span>
                 <span
                   ><strong class="text-white">Pinned Items:</strong> Pin important
                   items to keep them permanently</span
                 >
               </li>
               <li class="flex items-start gap-2">
-                <span class="text-red-500 mt-1">•</span>
+                <span class="text-[#FF8A3D] mt-1">•</span>
                 <span
                   ><strong class="text-white">Search:</strong> Quickly find items
                   with real-time search</span
                 >
               </li>
               <li class="flex items-start gap-2">
-                <span class="text-red-500 mt-1">•</span>
+                <span class="text-[#FF8A3D] mt-1">•</span>
                 <span
                   ><strong class="text-white">Export/Import:</strong> Backup and
                   restore your clipboard history</span
                 >
               </li>
               <li class="flex items-start gap-2">
-                <span class="text-red-500 mt-1">•</span>
+                <span class="text-[#FF8A3D] mt-1">•</span>
                 <span
                   ><strong class="text-white">Privacy:</strong> All data is stored
                   locally on your machine</span
@@ -1867,7 +1866,7 @@
 
         <div class="p-4 border-t border-[#333] flex justify-end">
           <button
-            class="px-6 py-2 bg-red-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all"
+            class="px-6 py-2 bg-[#FF8A3D] text-white rounded-xl text-xs font-bold shadow-lg shadow-[#FF8A3D]/25 hover:bg-[#e67d36] transition-all"
             onclick={() => (showHelpModal = false)}
           >
             Got it!
@@ -1899,7 +1898,7 @@
         >
           <div class="flex items-center gap-3">
             <div
-              class="w-10 h-10 rounded-full flex items-center justify-center shadow-lg shadow-red-500/20"
+              class="w-10 h-10 rounded-full flex items-center justify-center shadow-lg shadow-[#FF8A3D]/25"
             >
               <img src="/logo.png" alt="Ortu" class="w-8 h-8" />
             </div>
@@ -2000,9 +1999,9 @@
             </a>
 
             <div
-              class="p-4 bg-gradient-to-br from-red-500/10 to-red-500/5 rounded-xl border border-red-500/20"
+              class="p-4 bg-gradient-to-br from-[#FF8A3D]/10 to-[#FF8A3D]/6 rounded-xl border border-[#AEB291]/35"
             >
-              <div class="text-xs text-red-400 uppercase tracking-wider mb-2">
+              <div class="text-xs text-[#ff9b5a] uppercase tracking-wider mb-2">
                 Privacy First
               </div>
               <p class="text-xs text-zinc-400">
@@ -2021,7 +2020,7 @@
 
         <div class="p-4 border-t border-[#333] flex justify-end">
           <button
-            class="px-6 py-2 bg-red-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all"
+            class="px-6 py-2 bg-[#FF8A3D] text-white rounded-xl text-xs font-bold shadow-lg shadow-[#FF8A3D]/25 hover:bg-[#e67d36] transition-all"
             onclick={() => (showAboutModal = false)}
           >
             Close

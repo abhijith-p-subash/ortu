@@ -3,20 +3,22 @@
 @import "tailwindcss/utilities";
 
 :root {
-  --surface-0: #121315;
-  --surface-1: #1b1d20;
-  --surface-2: #24272b;
-  --stroke: #30343a;
+  --surface-0: #111214;
+  --surface-1: #17191c;
+  --surface-2: #202328;
+  --stroke: #2d3136;
   --text-primary: #f5f7fa;
   --text-secondary: #aeb6c2;
-  --accent: #ef4444;
+  --accent: #3f423c;
+  --accent-orange: #ff8a3d;
+  --accent-olive: #aeb291;
 }
 
 html,
 body {
   background:
-    radial-gradient(1200px 600px at 20% -20%, rgba(239, 68, 68, 0.08), transparent),
-    linear-gradient(180deg, #101113 0%, #121315 100%);
+    radial-gradient(1200px 600px at 20% -20%, rgba(174, 178, 145, 0.1), transparent),
+    linear-gradient(180deg, #0f1012 0%, #121417 100%);
   color: var(--text-primary);
   font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
 }
@@ -32,7 +34,7 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #3a3f46, #2d3137);
+  background: linear-gradient(180deg, #41464f, #333840);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: content-box;
@@ -40,4 +42,22 @@ body {
 
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Minimal radius scale for a cleaner professional look */
+.rounded-2xl {
+  border-radius: 0.175rem !important;
+}
+
+.rounded-xl {
+  border-radius: 0.175rem !important;
+}
+
+.rounded-lg {
+    border-radius: 0.175rem !important;
+}
+
+.rounded-md,
+.rounded {
+  border-radius: 0.175rem !important;
 }
