@@ -526,7 +526,7 @@
       </button>
       <button
         onclick={() => (isViewingGroups = true)}
-        class="flex items-center space-x-2 px-4 py-1.5 bg-[#3F423C] hover:bg-[#4d514a] rounded-md shadow-lg shadow-[#3F423C]/25 text-white transition-all text-xs font-bold"
+        class="flex items-center space-x-2 px-4 py-1.5 bg-[#AEB291] hover:bg-[#4d514a] rounded-md shadow-lg shadow-[#AEB291]/25 text-white transition-all text-xs font-bold"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -603,7 +603,7 @@
         <button
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           null
-            ? 'bg-[#AEB291]/18 text-[#3F423C] font-bold'
+            ? 'bg-[#AEB291]/18 text-[#AEB291] font-bold'
             : 'text-zinc-400 hover:bg-[#343a42]'}"
           onclick={() => {
             selectedGroup = null;
@@ -640,7 +640,7 @@
         <button
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           'URL'
-            ? 'bg-[#AEB291]/18 text-[#3F423C] font-bold'
+            ? 'bg-[#AEB291]/18 text-[#AEB291] font-bold'
             : 'text-zinc-400 hover:bg-[#343a42]'}"
           onclick={() => (selectedGroup = "URL")}
         >
@@ -668,10 +668,10 @@
           </span>
         </button>
 
-        <button
+        <!-- <button
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           'Images'
-            ? 'bg-[#AEB291]/18 text-[#3F423C] font-bold'
+            ? 'bg-[#AEB291]/18 text-[#AEB291] font-bold'
             : 'text-zinc-400 hover:bg-[#343a42]'}"
           onclick={() => (selectedGroup = "Images")}
         >
@@ -693,12 +693,12 @@
             >
             Images
           </span>
-        </button>
+        </button> -->
 
         <button
           class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
           'Text'
-            ? 'bg-[#AEB291]/18 text-[#3F423C] font-bold'
+            ? 'bg-[#AEB291]/18 text-[#AEB291] font-bold'
             : 'text-zinc-400 hover:bg-[#343a42]'}"
           onclick={() => (selectedGroup = "Text")}
         >
@@ -761,7 +761,7 @@
               <button
                 class="flex-1 text-left px-3 py-2 text-sm {selectedGroup ===
                 group
-                  ? 'text-[#3F423C] font-bold'
+                  ? 'text-[#AEB291] font-bold'
                   : 'text-zinc-400'}"
                 onclick={() => {
                   selectedGroup = group;
@@ -1355,7 +1355,7 @@
             />
             <button
               onclick={createGroup}
-              class="px-6 py-2.5 bg-[#3F423C] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#3F423C]/25 hover:bg-[#4d514a] transition-all"
+              class="px-6 py-2.5 bg-[#AEB291] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#AEB291]/25 hover:bg-[#4d514a] transition-all"
             >
               Create Group
             </button>
@@ -1596,7 +1596,7 @@
         <div class="p-2 border-t border-[#333] bg-[#171a1d] flex justify-end">
           <button
             onclick={moveItemToGroup}
-            class="px-4 py-1.5 bg-[#3F423C] text-white rounded-lg text-xs font-bold hover:bg-[#4d514a] transition-all"
+            class="px-4 py-1.5 bg-[#AEB291] text-white rounded-lg text-xs font-bold hover:bg-[#4d514a] transition-all"
             disabled={!newGroupName.trim()}
           >
             Save
