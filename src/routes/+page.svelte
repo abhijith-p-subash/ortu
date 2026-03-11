@@ -589,9 +589,9 @@
     </div>
   </header>
 
-  <div class="flex flex-1 overflow-hidden">
+  <div class="flex flex-1 overflow-hidden min-w-0">
     <!-- Persistent Sidebar -->
-    <aside class="w-64 bg-[#171a1d] border-r border-[#333] flex flex-col">
+    <aside class="w-64 min-w-64 max-w-64 shrink-0 bg-[#171a1d] border-r border-[#333] flex flex-col">
       <div class="p-4 border-b border-[#333]">
         <span
           class="text-[10px] font-bold uppercase tracking-widest text-zinc-500"
@@ -759,15 +759,16 @@
               />
             {:else}
               <button
-                class="flex-1 text-left px-3 py-2 text-sm {selectedGroup ===
+                class="flex-1 min-w-0 text-left px-3 py-2 text-sm truncate {selectedGroup ===
                 group
                   ? 'text-[#AEB291] font-bold'
                   : 'text-zinc-400'}"
+                title={group}
                 onclick={() => {
                   selectedGroup = group;
                 }}
               >
-                {group}
+                <span class="block truncate">{group}</span>
               </button>
               <div
                 class="flex opacity-0 group-hover:opacity-100 px-1 space-x-1"
@@ -845,7 +846,7 @@
     </aside>
 
     <!-- Main Content Area -->
-    <main class="flex-1 flex flex-col bg-[#171a1d]">
+    <main class="flex-1 min-w-0 flex flex-col bg-[#171a1d]">
       <!-- Search & Filter Area -->
       <div class="p-4 border-b border-[#333] flex items-center space-x-4">
         <div class="flex-1 relative">
@@ -916,7 +917,7 @@
         <div class="grid gap-2">
           {#each history as item, i (item.id)}
             <div
-              class="w-full p-4 rounded-xl border border-[#333] bg-[#171a1d] hover:bg-[#2a2f35] transition-all group flex flex-col space-y-3 cursor-default
+              class="w-full p-4 rounded-xl border border-[#333] bg-[#171a1d] hover:bg-[#2a2f35] transition-all group flex flex-col space-y-3 cursor-default overflow-hidden
                             {i === selectedIndex
                 ? 'ring-2 ring-[#AEB291]/45 bg-[#2a2f35]'
                 : ''}"
@@ -933,11 +934,11 @@
               tabindex="0"
               data-index={i}
             >
-              <div class="flex items-start justify-between">
+              <div class="flex items-start justify-between gap-3 min-w-0">
                 <div class="min-w-0 flex-1">
                   <div class="relative">
                     <p
-                      class="text-[13px] text-zinc-100 font-normal leading-relaxed break-words whitespace-pre-wrap {expandedItems.includes(
+                      class="text-[13px] text-zinc-100 font-normal leading-relaxed break-all whitespace-pre-wrap max-w-full {expandedItems.includes(
                         item.id
                       )
                         ? ''
@@ -966,7 +967,7 @@
                     {/if}
                   </div>
                 </div>
-                <div class="flex items-center space-x-1 ml-4 self-start">
+                <div class="flex items-center space-x-1 ml-2 self-start shrink-0">
                   <button
                     class="p-2 rounded-lg hover:bg-[#2a3038] transition-colors {item.is_permanent
                       ? 'text-amber-500'
