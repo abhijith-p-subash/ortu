@@ -83,6 +83,16 @@ npm run tauri build
 - **Windows**: `.exe`, `.msi`
 - **Linux**: `.deb`, `AppImage`
 
+### macOS Gatekeeper Workaround (No Apple Developer Account)
+
+If macOS shows `"Ortu is damaged and can't be opened"` after drag-and-drop to Applications, run:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Ortu.app"
+codesign --force --deep --sign - "/Applications/Ortu.app"
+open "/Applications/Ortu.app"
+```
+
 > [!TIP] > **Cross-Platform Builds**: It is highly recommended to use GitHub Actions for cross-platform distribution. See our [Build Guide](.gemini/antigravity/brain/089a0dc8-960b-4343-869c-209564bbb4f3/build_guide.md) for a sample workflow. (Note: Adjust path to build guide if moving to a standard location).
 
 ---
