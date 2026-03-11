@@ -253,7 +253,19 @@ impl ClipboardDB {
         let changed = previous.as_deref() != Some(boot_session_id);
 
         if changed {
-            tx.execute("DELETE FROM history WHERE is_permanent = 0", [])?;
+            // Keep pinned items and items explicitly assigned to at least one user group.
+            tx.execute(
+                "DELETE FROM history
+                 WHERE is_permanent = 0
+                   AND NOT EXISTS (
+                     SELECT 1
+                     FROM item_groups ig
+                     JOIN groups g ON g.id = ig.group_id
+                     WHERE ig.item_id = history.id
+                       AND g.is_system = 0
+                   )",
+                [],
+            )?;
             Self::set_meta_value(&tx, "boot_session_id", boot_session_id)?;
         }
 
