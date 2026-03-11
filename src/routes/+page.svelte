@@ -442,11 +442,11 @@
 </script>
 
 <div
-  class="flex flex-col h-screen bg-[#171a1d] text-zinc-300 overflow-hidden font-sans selection:bg-[#FF8A3D]/30"
+  class="flex flex-col h-screen pt-2 bg-[#171a1d] text-zinc-300 overflow-hidden font-sans selection:bg-[#FF8A3D]/30"
 >
   <!-- Top Bar / Header -->
   <header
-    class="px-4 py-3 border-b border-[#333] bg-[#171a1d] flex items-center justify-between shadow-sm"
+    class=" mt-4 px-4 py-3 border-b border-[#333] bg-[#171a1d] flex items-center justify-between shadow-sm"
   >
     <div class="flex items-center space-x-3">
       <div

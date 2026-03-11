@@ -13,12 +13,19 @@ use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 
+#[cfg(target_os = "windows")]
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::HWND;
+#[cfg(target_os = "windows")]
+use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR};
+
 #[cfg(target_os = "macos")]
 use cocoa::appkit::NSApp;
 #[cfg(target_os = "macos")]
 use cocoa::base::{id, nil, YES};
 #[cfg(target_os = "macos")]
-use objc::{msg_send, sel, sel_impl};
+use objc::{class, msg_send, sel, sel_impl};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -103,6 +110,10 @@ pub fn run() {
 
             // ---------------- MAIN WINDOW SETUP ----------------
             // Prevent the app from quitting when the main window is closed
+            if let Some(window) = app.get_webview_window("main") {
+                apply_main_titlebar_color(&window);
+            }
+
             if tray_enabled {
                 if let Some(window) = app.get_webview_window("main") {
                     let w = window.clone();
@@ -205,8 +216,62 @@ fn current_boot_session_id() -> String {
     format!("{}", System::boot_time())
 }
 
+fn apply_main_titlebar_color(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    {
+        let Ok(handle) = window.window_handle() else {
+            return;
+        };
+        let hwnd = match handle.as_raw() {
+            RawWindowHandle::Win32(h) => HWND(h.hwnd.get() as isize),
+            _ => return,
+        };
+
+        // COLORREF format: 0x00BBGGRR (for #171A1D).
+        let caption_color: u32 = 0x001D1A17;
+        let text_color: u32 = 0x00E8E8E8;
+
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_CAPTION_COLOR,
+                &caption_color as *const _ as _,
+                std::mem::size_of::<u32>() as u32,
+            );
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_TEXT_COLOR,
+                &text_color as *const _ as _,
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let w = window.clone();
+        let _ = window.run_on_main_thread(move || {
+            if let Ok(handle) = w.ns_window() {
+                let ns_window = handle as id;
+                unsafe {
+                    let color: id = msg_send![
+                        class!(NSColor),
+                        colorWithSRGBRed: 23.0f64 / 255.0f64
+                        green: 26.0f64 / 255.0f64
+                        blue: 29.0f64 / 255.0f64
+                        alpha: 1.0f64
+                    ];
+                    let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
+                    let _: () = msg_send![ns_window, setBackgroundColor: color];
+                }
+            }
+        });
+    }
+}
+
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
+        apply_main_titlebar_color(&window);
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
