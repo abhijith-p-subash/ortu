@@ -2,90 +2,73 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Ortu** is a minimalist, efficient, and open-source clipboard manager built with **Tauri**, **Rust**, and **SvelteKit**. Designed for speed and distraction-free productivity, Ortu stays out of your way until you need it.
+Ortu is a local-first clipboard manager built with Tauri, Rust, and SvelteKit.
+It is designed for fast recall, keyboard-driven access, and organized clipboard history.
 
-![Main Window Placeholder](https://via.placeholder.com/800x450?text=Ortu+Main+Window)
+## Features
 
-## 📋 Features
+- Clipboard history capture (current runtime pipeline is text-first).
+- Pin important items to keep them persistent.
+- User groups and smart auto-grouping support.
+- Search and filtering (`group:<name>` and free-text search).
+- Popup quick access (`Alt+V` on Windows/Linux, `Option+V` on macOS).
+- Snippets and text transforms.
+- Backup and restore (JSON), plus export options.
+- Local SQLite storage (no cloud dependency by default).
 
-- **Clipboard History**: Automatically tracks text and image copies.
-- **Pin Items**: Mark important clips as permanent to prevent them from being pruned.
-- **Smart Grouping**: Organize your clips into custom groups (e.g., "Work", "Snippets", "Passwords").
-- **Search & Filter**: Find anything instantly with keyword search or filters (e.g., `group:Work`).
-- **Direct Paste**: Selected items are pasted directly into your active window.
-- **Autostart**: Optionally starts with your OS to ensure clipboard monitoring is always active.
-- **Data Portability**: Full support for Backup/Restore (JSON) and Exporting groups or all history (TXT).
-- **Lightweight**: Minimal memory footprint thanks to the Rust backend and native SQLite storage.
+## Tech Stack
 
-## ⌨️ Hotkeys
+- Frontend: SvelteKit + Tailwind CSS
+- Backend: Rust (Tauri v2)
+- Storage: SQLite via `rusqlite`
 
-| Platform    | Shortcut             | Action               |
-| :---------- | :------------------- | :------------------- |
-| **macOS**   | `⌥ + V` (Option + V) | Toggle Stealth Popup |
-| **Windows** | `Alt + V`            | Toggle Stealth Popup |
-| **Linux**   | `Alt + V`            | Toggle Stealth Popup |
+## Supported Platforms
 
-## 🚀 Tech Stack
+- macOS
+- Windows
+- Linux
 
-- **Frontend**: [SvelteKit](https://kit.svelte.dev/) + [Tailwind CSS](https://tailwindcss.com/)
-- **Backend**: [Tauri](https://tauri.app/) (Rust)
-- **Database**: [SQLite](https://sqlite.org/) (via `rusqlite`)
-- **State Management**: Svelte Runes
+## Prerequisites
 
----
+- Rust toolchain: <https://www.rust-lang.org/tools/install>
+- Node.js (LTS recommended): <https://nodejs.org/>
+- Platform dependencies:
+- macOS: Xcode Command Line Tools
+- Linux: `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`
+- Windows: WebView2 Runtime and MSVC build tools
 
-## 🛠 Getting Started
+## Quick Start
 
-### Prerequisites
+```bash
+git clone https://github.com/abhijithpsubash/ortu.git
+cd ortu
+npm install
+npm run tauri dev
+```
 
-To build or develop Ortu, you'll need:
-
-- **Rust**: [Install Rust](https://www.rust-lang.org/tools/install)
-- **Node.js**: [Install Node.js](https://nodejs.org/) (LTS recommended)
-- **Platform Dependencies**:
-  - **macOS**: Xcode Command Line Tools.
-  - **Linux**: `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`.
-  - **Windows**: [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) and Build Tools.
-
-### Installation
-
-1. **Clone the repository**:
-
-   ```bash
-   git clone https://github.com/abhijithpsubash/ortu.git
-   cd ortu
-   ```
-
-2. **Install dependencies**:
-
-   ```bash
-   npm install
-   ```
-
-3. **Run in development mode**:
-   ```bash
-   npm run tauri dev
-   ```
-
----
-
-## 📦 Building for Production
-
-To create a production-ready installer for your specific OS, run:
+## Build
 
 ```bash
 npm run tauri build
 ```
 
-### Build Artifacts:
+Typical artifacts:
+- macOS: `.app`, `.dmg`
+- Windows: `.exe`, `.msi`
+- Linux: `.deb`, `AppImage`
 
-- **macOS**: `.app`, `.dmg`
-- **Windows**: `.exe`, `.msi`
-- **Linux**: `.deb`, `AppImage`
+## Hotkeys
 
-### macOS Gatekeeper Workaround (No Apple Developer Account)
+- macOS: `Option + V`
+- Windows: `Alt + V`
+- Linux: `Alt + V`
 
-If macOS shows `"Ortu is damaged and can't be opened"` after drag-and-drop to Applications, run:
+## macOS Gatekeeper Workaround (No Apple Developer Account)
+
+If macOS shows:
+`"Ortu" is damaged and can’t be opened. You should move it to the Bin.`
+
+run:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Ortu.app"
@@ -93,40 +76,46 @@ codesign --force --deep --sign - "/Applications/Ortu.app"
 open "/Applications/Ortu.app"
 ```
 
-> [!TIP] > **Cross-Platform Builds**: It is highly recommended to use GitHub Actions for cross-platform distribution. See our [Build Guide](.gemini/antigravity/brain/089a0dc8-960b-4343-869c-209564bbb4f3/build_guide.md) for a sample workflow. (Note: Adjust path to build guide if moving to a standard location).
+Note:
+- Without Apple notarization, Gatekeeper warnings are expected for shared binaries.
+- macOS does not allow fully automatic script execution during drag-and-drop install from DMG.
 
----
+## Versioning
 
-## 🔖 Versioning
-
-To update the application version across all configuration files (`package.json`, `tauri.conf.json`, `Cargo.toml`), run:
+Update app version in all required config files:
 
 ```bash
 npm run version-up <new_version>
 ```
 
-**Example:**
+Example:
 
 ```bash
-npm run version-up 1.0.2
+npm run version-up 1.0.4
 ```
 
----
+## Project Structure
 
-## 🤝 Contributing
+- `src/`: SvelteKit frontend
+- `src-tauri/src/`: Rust backend logic
+- `src-tauri/tauri.conf.json`: Tauri app/bundle config
 
-Contributions are welcome! Whether it's a bug report, a feature request, or a pull request, we appreciate your help.
+## Contributing
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
+Contributions are welcome.
+
+1. Fork the repository
+2. Create a branch (`git checkout -b feature/your-change`)
+3. Commit changes (`git commit -m "your message"`)
+4. Push branch (`git push origin feature/your-change`)
 5. Open a Pull Request
 
-## 📄 License
+## Security and Privacy
 
-Distributed under the MIT License. See `LICENSE` for more information.
+- Clipboard data is stored locally.
+- Review code and release process before distributing binaries.
+- For production public distribution on macOS, signing + notarization is strongly recommended.
 
----
+## License
 
-Made with ❤️ by [Abhijith P Subash](https://github.com/abhijithpsubash)
+MIT License. See [LICENSE](./LICENSE).
