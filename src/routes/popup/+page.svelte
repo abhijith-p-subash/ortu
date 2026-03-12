@@ -227,6 +227,8 @@
 
   onMount(() => {
     window.addEventListener("keydown", handleKeydown);
+    const preventContextMenu = (e: MouseEvent) => e.preventDefault();
+    window.addEventListener("contextmenu", preventContextMenu);
 
     // This is the important part
     const setupListeners = async () => {
@@ -264,6 +266,7 @@
 
     return () => {
       window.removeEventListener("keydown", handleKeydown);
+      window.removeEventListener("contextmenu", preventContextMenu);
       cleanup.then((c) => c());
     };
   });

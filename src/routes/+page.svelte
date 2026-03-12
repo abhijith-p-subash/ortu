@@ -369,6 +369,8 @@
     loadHistory();
     loadGroups();
     window.addEventListener("keydown", handleKeydown);
+    const preventContextMenu = (e: MouseEvent) => e.preventDefault();
+    window.addEventListener("contextmenu", preventContextMenu);
 
     let unlistenFocus: () => void;
     let unlistenClipboard: () => void;
@@ -400,6 +402,7 @@
 
     return () => {
       window.removeEventListener("keydown", handleKeydown);
+      window.removeEventListener("contextmenu", preventContextMenu);
       if (unlistenFocus) unlistenFocus();
       if (unlistenClipboard) unlistenClipboard();
     };
