@@ -4,6 +4,7 @@ mod commands;
 mod db;
 
 use db::ClipboardDB;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use sysinfo::System;
@@ -26,6 +27,12 @@ use cocoa::appkit::NSApp;
 use cocoa::base::{id, nil, YES};
 #[cfg(target_os = "macos")]
 use objc::{class, msg_send, sel, sel_impl};
+#[cfg(target_os = "macos")]
+use std::ffi::CStr;
+#[cfg(target_os = "macos")]
+use std::os::raw::c_char;
+
+pub struct PopupPasteTarget(pub Mutex<Option<String>>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -82,6 +89,7 @@ pub fn run() {
             let boot_session_id = current_boot_session_id();
             let _ = db.clear_ephemeral_on_boot_change(&boot_session_id)?;
             app.manage(db);
+            app.manage(PopupPasteTarget(Mutex::new(None)));
 
             // ---------------- TRAY ----------------
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -194,6 +202,7 @@ pub fn run() {
             commands::paste_item,
             commands::copy_item_to_clipboard,
             commands::copy_item_and_paste,
+            commands::copy_item_and_paste_from_popup,
             commands::manual_cleanup,
             commands::close_window,
             commands::backup_data,
@@ -314,6 +323,14 @@ fn show_popup(app: &tauri::AppHandle) {
 
         #[cfg(target_os = "macos")]
         {
+            if let Some(target) = get_frontmost_app_bundle_id_macos() {
+                if let Some(state) = app.try_state::<PopupPasteTarget>() {
+                    if let Ok(mut guard) = state.0.lock() {
+                        *guard = Some(target);
+                    }
+                }
+            }
+
             let _ = app.run_on_main_thread(move || {
                 unsafe {
                     let ns_app = NSApp();
@@ -340,5 +357,28 @@ fn show_popup(app: &tauri::AppHandle) {
             &window,
             tauri_plugin_positioner::Position::Center,
         );
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn get_frontmost_app_bundle_id_macos() -> Option<String> {
+    unsafe {
+        let ws: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+        if ws == nil {
+            return None;
+        }
+        let frontmost: id = msg_send![ws, frontmostApplication];
+        if frontmost == nil {
+            return None;
+        }
+        let bundle_id: id = msg_send![frontmost, bundleIdentifier];
+        if bundle_id == nil {
+            return None;
+        }
+        let ptr: *const c_char = msg_send![bundle_id, UTF8String];
+        if ptr.is_null() {
+            return None;
+        }
+        Some(CStr::from_ptr(ptr).to_string_lossy().into_owned())
     }
 }

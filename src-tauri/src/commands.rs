@@ -1,4 +1,6 @@
 use crate::db::{ClipboardDB, ClipboardItem, Snippet};
+#[cfg(target_os = "macos")]
+use crate::PopupPasteTarget;
 use base64::Engine as _;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
@@ -232,6 +234,47 @@ fn send_paste_shortcut() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+fn escape_applescript_string(v: &str) -> String {
+    v.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+#[cfg(target_os = "macos")]
+fn send_popup_paste_shortcut_macos(target_bundle_id: Option<&str>) -> Result<(), String> {
+    use std::process::Command;
+
+    // Deterministic popup behavior:
+    // 1) Re-activate the app that was frontmost before popup opened
+    // 2) Paste (Cmd+V)
+    let script = if let Some(bundle) = target_bundle_id {
+        let escaped = escape_applescript_string(bundle);
+        format!(
+            r#"
+tell application id "{escaped}" to activate
+delay 0.10
+tell application "System Events"
+  keystroke "v" using {{command down}}
+end tell
+"#
+        )
+    } else {
+        r#"
+tell application "System Events"
+  keystroke "v" using {command down}
+end tell
+"#
+        .to_string()
+    };
+
+    Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .status()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 #[tauri::command]
 pub fn copy_item_to_clipboard(app: AppHandle, id: i64) -> Result<(), String> {
     use arboard::Clipboard;
@@ -250,6 +293,26 @@ pub async fn copy_item_and_paste(app: AppHandle, id: i64) -> Result<(), String> 
     copy_item_to_clipboard(app, id)?;
     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
     send_paste_shortcut()
+}
+
+#[tauri::command]
+pub async fn copy_item_and_paste_from_popup(app: AppHandle, id: i64) -> Result<(), String> {
+    copy_item_to_clipboard(app.clone(), id)?;
+
+    #[cfg(target_os = "macos")]
+    {
+        let target_bundle = app
+            .try_state::<PopupPasteTarget>()
+            .and_then(|s| s.0.lock().ok().and_then(|g| g.clone()));
+        tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+        return send_popup_paste_shortcut_macos(target_bundle.as_deref());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+        return send_paste_shortcut();
+    }
 }
 
 #[tauri::command]
