@@ -604,7 +604,7 @@
 
 <style>
   :global(html) {
-    border-radius: 0.175rem !important;
+    border-radius: 0.375rem !important;
     overflow: hidden;
     background: transparent;
   }
@@ -612,12 +612,12 @@
   :global(body) {
     margin: 0;
     overflow: hidden;
-    border-radius: 0.175rem !important;
+    border-radius: 0.375rem !important;
     background: transparent;
   }
 
   .popup-shell {
-    border-radius: 0.175rem !important;
+    border-radius: 0.375rem !important;
   }
   .custom-scrollbar::-webkit-scrollbar {
     width: 3px;

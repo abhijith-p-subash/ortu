@@ -46,18 +46,18 @@ body {
 
 /* Minimal radius scale for a cleaner professional look */
 .rounded-2xl {
-  border-radius: 0.175rem !important;
+  border-radius: 0.375rem !important;
 }
 
 .rounded-xl {
-  border-radius: 0.175rem !important;
+  border-radius: 0.375rem !important;
 }
 
 .rounded-lg {
-    border-radius: 0.175rem !important;
+    border-radius: 0.375rem !important;
 }
 
 .rounded-md,
 .rounded {
-  border-radius: 0.175rem !important;
+  border-radius: 0.375rem !important;
 }
