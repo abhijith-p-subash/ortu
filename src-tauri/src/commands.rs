@@ -5,6 +5,12 @@ use base64::Engine as _;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
+#[cfg(target_os = "macos")]
+#[link(name = "ApplicationServices", kind = "framework")]
+unsafe extern "C" {
+    fn AXIsProcessTrusted() -> bool;
+}
+
 fn validate_path(path_str: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(path_str);
     if !path.is_absolute() {
@@ -213,19 +219,26 @@ pub async fn paste_item(_app: AppHandle) -> Result<(), String> {
 }
 
 fn send_paste_shortcut() -> Result<(), String> {
+    use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+
+    #[cfg(target_os = "macos")]
+    ensure_macos_accessibility_permission()?;
+
+    log::info!("Sending paste shortcut");
+
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+
     #[cfg(target_os = "macos")]
     {
-        use std::process::Command;
-        let _ = Command::new("osascript")
-            .arg("-e")
-            .arg("tell application \"System Events\" to keystroke \"v\" using {command down}")
-            .spawn();
+        let _ = enigo.key(Key::Meta, Direction::Press);
+        // Use the fixed macOS virtual keycode for "V" to avoid layout lookup
+        // on a Tokio worker thread, which can trap in release builds.
+        let _ = enigo.key(Key::Other(9), Direction::Click);
+        let _ = enigo.key(Key::Meta, Direction::Release);
     }
 
     #[cfg(not(target_os = "macos"))]
     {
-        use enigo::{Direction, Enigo, Key, Keyboard, Settings};
-        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
         let _ = enigo.key(Key::Control, Direction::Press);
         let _ = enigo.key(Key::Unicode('v'), Direction::Click);
         let _ = enigo.key(Key::Control, Direction::Release);
@@ -240,39 +253,85 @@ fn escape_applescript_string(v: &str) -> String {
 }
 
 #[cfg(target_os = "macos")]
-fn send_popup_paste_shortcut_macos(target_bundle_id: Option<&str>) -> Result<(), String> {
+fn ensure_macos_accessibility_permission() -> Result<(), String> {
+    let trusted = unsafe { AXIsProcessTrusted() };
+    if trusted {
+        return Ok(());
+    }
+
+    let _ = open_macos_accessibility_settings();
+
+    Err(
+        "Ortu needs macOS Accessibility permission to paste into other apps. Enable Ortu in System Settings -> Privacy & Security -> Accessibility, then try again.".to_string(),
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn activate_popup_target_macos(target_bundle_id: Option<&str>) -> Result<(), String> {
     use std::process::Command;
 
-    // Deterministic popup behavior:
-    // 1) Re-activate the app that was frontmost before popup opened
-    // 2) Paste (Cmd+V)
+    log::info!(
+        "Activating popup paste target on macOS: {:?}",
+        target_bundle_id
+    );
+
     let script = if let Some(bundle) = target_bundle_id {
         let escaped = escape_applescript_string(bundle);
         format!(
             r#"
 tell application id "{escaped}" to activate
 delay 0.10
-tell application "System Events"
-  keystroke "v" using {{command down}}
-end tell
+tell application id "{escaped}" to activate
 "#
         )
     } else {
-        r#"
-tell application "System Events"
-  keystroke "v" using {command down}
-end tell
-"#
-        .to_string()
+        return Ok(());
     };
 
-    Command::new("osascript")
+    let status = Command::new("osascript")
         .arg("-e")
         .arg(script)
         .status()
         .map_err(|e| e.to_string())?;
 
+    if !status.success() {
+        return Err(format!(
+            "Failed to activate previous app before paste (exit: {})",
+            status
+        ));
+    }
+
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_macos_accessibility_status() -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    {
+        return Ok(unsafe { AXIsProcessTrusted() });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+pub fn open_macos_accessibility_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+            .status()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -297,15 +356,26 @@ pub async fn copy_item_and_paste(app: AppHandle, id: i64) -> Result<(), String> 
 
 #[tauri::command]
 pub async fn copy_item_and_paste_from_popup(app: AppHandle, id: i64) -> Result<(), String> {
+    log::info!("Popup paste requested for item {}", id);
+
+    if let Some(window) = app.get_webview_window("popup") {
+        log::info!("Hiding popup window before paste");
+        let _ = window.hide();
+    }
+
     copy_item_to_clipboard(app.clone(), id)?;
+    log::info!("Clipboard payload restored for item {}", id);
 
     #[cfg(target_os = "macos")]
     {
         let target_bundle = app
             .try_state::<PopupPasteTarget>()
             .and_then(|s| s.0.lock().ok().and_then(|g| g.clone()));
-        tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
-        return send_popup_paste_shortcut_macos(target_bundle.as_deref());
+        log::info!("Stored popup target bundle: {:?}", target_bundle);
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        activate_popup_target_macos(target_bundle.as_deref())?;
+        tokio::time::sleep(tokio::time::Duration::from_millis(450)).await;
+        return send_paste_shortcut();
     }
 
     #[cfg(not(target_os = "macos"))]

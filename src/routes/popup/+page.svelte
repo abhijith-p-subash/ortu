@@ -70,11 +70,11 @@
   async function copyAndPaste(item: ClipboardItem) {
     try {
       hoverPreview = null;
-      // Close popup and trigger paste in the previous app
-      await invoke("close_window", { label: "popup" });
       await invoke("copy_item_and_paste_from_popup", { id: item.id });
     } catch (err) {
       console.error("Failed to copy and paste:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      window.alert(message);
     }
   }
 

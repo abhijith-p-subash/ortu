@@ -203,6 +203,8 @@ pub fn run() {
             commands::copy_item_to_clipboard,
             commands::copy_item_and_paste,
             commands::copy_item_and_paste_from_popup,
+            commands::get_macos_accessibility_status,
+            commands::open_macos_accessibility_settings,
             commands::manual_cleanup,
             commands::close_window,
             commands::backup_data,

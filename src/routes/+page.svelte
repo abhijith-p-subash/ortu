@@ -36,6 +36,8 @@
   let showHelpModal = $state(false);
   let showAboutModal = $state(false);
   let currentPlatform = $state<string>("macos");
+  let macAccessibilityGranted = $state(true);
+  let checkingMacAccessibility = $state(false);
 
   // Toast notification state
   let showCopiedToast = $state(false);
@@ -46,6 +48,7 @@
     try {
       currentPlatform = await platform();
       appVersion = await getVersion();
+      await refreshMacAccessibilityStatus();
     } catch (e) {
       console.error("Failed to detect platform/version:", e);
     }
@@ -55,6 +58,33 @@
   let modKey = $derived(currentPlatform === "macos" ? "Cmd" : "Ctrl");
   let deleteKey = $derived(currentPlatform === "macos" ? "⌫" : "Backspace");
   let altKey = $derived(currentPlatform === "macos" ? "Option" : "Alt");
+
+  async function refreshMacAccessibilityStatus() {
+    if (currentPlatform !== "macos") {
+      macAccessibilityGranted = true;
+      return;
+    }
+
+    try {
+      checkingMacAccessibility = true;
+      macAccessibilityGranted = (await invoke(
+        "get_macos_accessibility_status"
+      )) as boolean;
+    } catch (e) {
+      console.error("Failed to check macOS Accessibility status:", e);
+      macAccessibilityGranted = false;
+    } finally {
+      checkingMacAccessibility = false;
+    }
+  }
+
+  async function openMacAccessibilitySettings() {
+    try {
+      await invoke("open_macos_accessibility_settings");
+    } catch (e) {
+      console.error("Failed to open Accessibility settings:", e);
+    }
+  }
 
   async function loadHistory() {
     try {
@@ -381,6 +411,7 @@
           console.log("Main window focused - refreshing");
           await loadHistory();
           await loadGroups();
+          await refreshMacAccessibilityStatus();
           // Reset select only if history was empty or search changed?
           // For now, keep selection if possible, but focus search.
           await tick();
@@ -591,6 +622,44 @@
       </button>
     </div>
   </header>
+
+  {#if currentPlatform === "macos" && !macAccessibilityGranted}
+    <section
+      class="mx-4 mt-3 rounded-md border border-[#FF8A3D]/40 bg-[#FF8A3D]/10 px-4 py-3"
+    >
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-sm font-semibold text-white">
+            Enable Accessibility for direct paste
+          </p>
+          <p class="mt-1 text-xs leading-5 text-zinc-300">
+            The installed macOS app can copy history items, but direct paste
+            into other apps needs Accessibility permission for
+            <span class="font-semibold text-white"> /Applications/Ortu.app </span>.
+            Enable it in
+            <span class="font-semibold text-white">
+              Privacy &amp; Security → Accessibility
+            </span>.
+          </p>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
+          <button
+            onclick={refreshMacAccessibilityStatus}
+            class="rounded-md border border-[#333] bg-[#343a42] px-3 py-1.5 text-xs font-semibold text-zinc-100 transition-all hover:bg-[#2a3038]"
+            disabled={checkingMacAccessibility}
+          >
+            {checkingMacAccessibility ? "Checking..." : "Refresh"}
+          </button>
+          <button
+            onclick={openMacAccessibilitySettings}
+            class="rounded-md border border-[#FF8A3D]/30 bg-[#FF8A3D] px-3 py-1.5 text-xs font-semibold text-[#171a1d] transition-all hover:bg-[#ff9a56]"
+          >
+            Open Settings
+          </button>
+        </div>
+      </div>
+    </section>
+  {/if}
 
   <div class="flex flex-1 overflow-hidden min-w-0">
     <!-- Persistent Sidebar -->
