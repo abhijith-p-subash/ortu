@@ -234,7 +234,7 @@ fn apply_main_titlebar_color(window: &tauri::WebviewWindow) {
             return;
         };
         let hwnd = match handle.as_raw() {
-            RawWindowHandle::Win32(h) => HWND(h.hwnd.get() as isize),
+            RawWindowHandle::Win32(h) => HWND(h.hwnd.get() as *mut std::ffi::c_void),
             _ => return,
         };
 
