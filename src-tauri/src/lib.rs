@@ -11,11 +11,10 @@ use std::thread;
 use std::time::Duration;
 use sysinfo::System;
 use tauri::Manager;
-#[cfg(not(target_os = "windows"))]
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
 use tauri::{WebviewUrl, WebviewWindowBuilder};
-#[cfg(not(target_os = "windows"))]
 use tauri_plugin_autostart::ManagerExt;
-#[cfg(not(target_os = "windows"))]
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 
 #[cfg(target_os = "windows")]
@@ -53,31 +52,25 @@ pub fn run() {
         }));
     }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        builder = builder
-            .plugin(tauri_plugin_autostart::init(
-                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-                Some(vec![]),
-            ))
-            .plugin(
-                tauri_plugin_global_shortcut::Builder::new()
-                    .with_handler(|app, s, e| {
-                        if e.state == ShortcutState::Pressed
-                            && s.matches(Modifiers::ALT, Code::KeyV)
-                        {
-                            toggle_popup(app);
-                        }
-                    })
-                    .build(),
-            );
-    }
+    builder = builder
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, s, e| {
+                    if e.state == ShortcutState::Pressed && s.matches(Modifiers::ALT, Code::KeyV) {
+                        toggle_popup(app);
+                    }
+                })
+                .build(),
+        );
 
     builder
         .setup(|app| {
             startup_trace("setup: entered");
             // ---------------- SAFE GLOBAL SHORTCUT REGISTRATION ----------------
-            #[cfg(not(target_os = "windows"))]
             {
                 use tauri_plugin_global_shortcut::GlobalShortcutExt;
                 let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::KeyV);
@@ -130,6 +123,33 @@ pub fn run() {
             app.manage(db);
             app.manage(PopupPasteTarget(Mutex::new(None)));
 
+            // ---------------- TRAY ----------------
+            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+
+            let tray_enabled = if let Some(icon) = app.default_window_icon().cloned() {
+                match TrayIconBuilder::new()
+                    .icon(icon)
+                    .menu(&menu)
+                    .on_menu_event(|app: &tauri::AppHandle, event| match event.id.as_ref() {
+                        "quit" => app.exit(0),
+                        "show" => show_main_window(app),
+                        _ => {}
+                    })
+                    .build(app)
+                {
+                    Ok(_) => true,
+                    Err(e) => {
+                        log::error!("Tray icon initialization failed: {}", e);
+                        false
+                    }
+                }
+            } else {
+                log::warn!("Default window icon missing; skipping tray icon initialization.");
+                false
+            };
+
             // macOS: Run as background accessory app (no dock icon, stays in menu bar)
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -138,39 +158,19 @@ pub fn run() {
             // Prevent the app from quitting when the main window is closed
             if let Some(window) = app.get_webview_window("main") {
                 apply_main_titlebar_color(&window);
+                if tray_enabled {
+                    let w = window.clone();
+                    window.on_window_event(move |e| {
+                        if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+                            api.prevent_close();
+                            let _ = w.hide();
+                        }
+                    });
+                }
             }
 
             // ---------------- POPUP WINDOW SETUP ----------------
-            #[cfg(not(target_os = "windows"))]
-            if app.get_webview_window("popup").is_none() {
-                let _ = WebviewWindowBuilder::new(app, "popup", WebviewUrl::App("/popup".into()))
-                    .title("Ortu Quick Access")
-                    .inner_size(550.0, 450.0)
-                    .resizable(false)
-                    .decorations(false)
-                    .transparent(true)
-                    .visible(false)
-                    .always_on_top(true)
-                    .skip_taskbar(true)
-                    .focused(true)
-                    .build();
-            }
-
-            if let Some(window) = app.get_webview_window("popup") {
-                let w = window.clone();
-                #[cfg(target_os = "macos")]
-                setup_mac_popup(&w);
-
-                window.on_window_event(move |e| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = e {
-                        // Also prevent popup from closing the app
-                        api.prevent_close();
-                        let _ = w.hide();
-                    } else if let tauri::WindowEvent::Focused(false) = e {
-                        let _ = w.hide();
-                    }
-                });
-            }
+            let _ = ensure_popup_window(app.handle());
 
             // ---------------- CLIPBOARD LISTENER ----------------
             startup_trace("setup: start clipboard listener");
@@ -189,7 +189,6 @@ pub fn run() {
 
             // ---------------- AUTOSTART ----------------
             // Only enable autostart if logic requires it, avoid aggressive re-enabling which might corrupt registry
-            #[cfg(not(target_os = "windows"))]
             {
                 let autostart_manager = app.autolaunch();
                 if let Ok(enabled) = autostart_manager.is_enabled() {
@@ -377,8 +376,57 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-fn toggle_popup(app: &tauri::AppHandle) {
+fn ensure_popup_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
     if let Some(window) = app.get_webview_window("popup") {
+        return Some(window);
+    }
+
+    let mut builder = WebviewWindowBuilder::new(app, "popup", WebviewUrl::App("/popup".into()))
+        .title("Ortu Quick Access")
+        .inner_size(550.0, 450.0)
+        .resizable(false)
+        .decorations(false)
+        .visible(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(true);
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        builder = builder.transparent(true);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        builder = builder.transparent(false);
+    }
+
+    let window = match builder.build() {
+        Ok(window) => window,
+        Err(e) => {
+            startup_trace(&format!("popup: create failed: {}", e));
+            return None;
+        }
+    };
+
+    let w = window.clone();
+    #[cfg(target_os = "macos")]
+    setup_mac_popup(&w);
+
+    window.on_window_event(move |e| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+            api.prevent_close();
+            let _ = w.hide();
+        } else if let tauri::WindowEvent::Focused(false) = e {
+            let _ = w.hide();
+        }
+    });
+
+    Some(window)
+}
+
+fn toggle_popup(app: &tauri::AppHandle) {
+    if let Some(window) = ensure_popup_window(app) {
         if window.is_visible().unwrap_or(false) {
             let _ = window.hide();
         } else {
