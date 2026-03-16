@@ -1,6 +1,5 @@
 use crate::db::ClipboardDB;
 use arboard::Clipboard;
-use regex::Regex;
 use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
@@ -21,6 +20,70 @@ fn finalize_scores(scores: HashMap<String, f32>) -> Vec<(String, f32)> {
     items
 }
 
+fn first_token_lowercase(text: &str) -> String {
+    text.split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .trim_matches(|c: char| matches!(c, '"' | '\'' | '`' | '(' | '['))
+        .to_ascii_lowercase()
+}
+
+fn looks_like_url(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("http://") || lower.contains("https://") || lower.contains("ftp://")
+}
+
+fn looks_like_email(text: &str) -> bool {
+    text.split_whitespace().any(|token| {
+        let trimmed = token.trim_matches(|c: char| ",;:()[]{}<>\"'".contains(c));
+        let mut parts = trimmed.split('@');
+        let local = parts.next().unwrap_or_default();
+        let domain = parts.next().unwrap_or_default();
+        parts.next().is_none()
+            && !local.is_empty()
+            && domain.contains('.')
+            && !domain.starts_with('.')
+            && !domain.ends_with('.')
+    })
+}
+
+fn looks_like_json(text: &str) -> bool {
+    let trimmed = text.trim();
+    (trimmed.starts_with('{') && trimmed.ends_with('}'))
+        || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+}
+
+fn looks_like_xml(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    trimmed.starts_with("<?xml") || (trimmed.starts_with('<') && trimmed.contains('>'))
+}
+
+fn looks_like_windows_path(text: &str) -> bool {
+    let trimmed = text.trim();
+    let bytes = trimmed.as_bytes();
+    bytes.len() > 2
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+}
+
+fn looks_like_unix_path(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed.starts_with('/') && trimmed.len() > 1
+}
+
+fn looks_like_code_snippet(text: &str) -> bool {
+    text.contains("```")
+        || text.contains("function ")
+        || text.contains("class ")
+        || text.contains("=>")
+}
+
+fn starts_with_any(token: &str, prefixes: &[&str]) -> bool {
+    prefixes.iter().any(|prefix| token == *prefix)
+}
+
 pub fn start_listener(app: AppHandle) {
     thread::spawn(move || {
         let mut clipboard = match Clipboard::new() {
@@ -32,65 +95,6 @@ pub fn start_listener(app: AppHandle) {
         };
 
         let mut last_signature = String::new();
-
-        let docker_re = Regex::new(r"(?m)^(docker|docker-compose)\s").unwrap();
-        let kubectl_re = Regex::new(r"(?m)^kubectl\s").unwrap();
-        let helm_re = Regex::new(r"(?m)^helm\s").unwrap();
-        let terraform_re = Regex::new(r"(?m)^terraform\s").unwrap();
-        let ansible_re = Regex::new(r"(?m)^ansible(-playbook)?\s").unwrap();
-        let aws_re = Regex::new(r"(?m)^aws\s").unwrap();
-        let gcloud_re = Regex::new(r"(?m)^gcloud\s").unwrap();
-        let az_re = Regex::new(r"(?m)^az\s").unwrap();
-        let git_re = Regex::new(r"(?m)^git\s").unwrap();
-        let gh_re = Regex::new(r"(?m)^gh\s").unwrap();
-        let svn_re = Regex::new(r"(?m)^svn\s").unwrap();
-        let npm_re = Regex::new(r"(?m)^npm\s").unwrap();
-        let npx_re = Regex::new(r"(?m)^npx\s").unwrap();
-        let yarn_re = Regex::new(r"(?m)^yarn\s").unwrap();
-        let pnpm_re = Regex::new(r"(?m)^pnpm\s").unwrap();
-        let pip_re = Regex::new(r"(?m)^(pip|pip3)\s").unwrap();
-        let poetry_re = Regex::new(r"(?m)^poetry\s").unwrap();
-        let cargo_re = Regex::new(r"(?m)^cargo\s").unwrap();
-        let go_mod_re = Regex::new(r"(?m)^go\s(mod|get|build|run)\b").unwrap();
-        let brew_re = Regex::new(r"(?m)^brew\s").unwrap();
-        let apt_re = Regex::new(r"(?m)^(apt|apt-get)\s").unwrap();
-        let yum_re = Regex::new(r"(?m)^(yum|dnf)\s").unwrap();
-        let node_re = Regex::new(r"(?m)^node\s").unwrap();
-        let python_re = Regex::new(r"(?m)^(python|python3)\s").unwrap();
-        let java_re = Regex::new(r"(?m)^java\s").unwrap();
-        let mvn_re = Regex::new(r"(?m)^mvn\s").unwrap();
-        let gradle_re = Regex::new(r"(?m)^gradle\s").unwrap();
-        let dotnet_re = Regex::new(r"(?m)^dotnet\s").unwrap();
-        let rustc_re = Regex::new(r"(?m)^rustc\s").unwrap();
-        let bash_re =
-            Regex::new(r"(?m)^(cd|ls|pwd|cp|mv|rm|cat|less|grep|find|chmod|chown)\b").unwrap();
-        let zsh_re = Regex::new(r"(?m)^zsh\s").unwrap();
-        let powershell_re = Regex::new(r"(?m)^(Get-|Set-|New-|Remove-)\w+").unwrap();
-        let curl_re = Regex::new(r"(?m)^curl\s").unwrap();
-        let wget_re = Regex::new(r"(?m)^wget\s").unwrap();
-        let httpie_re = Regex::new(r"(?m)^http\s").unwrap();
-        let ping_re = Regex::new(r"(?m)^ping\s").unwrap();
-        let netstat_re = Regex::new(r"(?m)^(netstat|ss)\s").unwrap();
-        let lsof_re = Regex::new(r"(?m)^lsof\s").unwrap();
-        let psql_re = Regex::new(r"(?m)^psql\s").unwrap();
-        let mysql_re = Regex::new(r"(?m)^mysql\s").unwrap();
-        let redis_re = Regex::new(r"(?m)^redis-cli\s").unwrap();
-        let mongo_re = Regex::new(r"(?m)^mongo\s").unwrap();
-        let sqlite_re = Regex::new(r"(?m)^sqlite3\s").unwrap();
-        let make_re = Regex::new(r"(?m)^make\s").unwrap();
-        let cmake_re = Regex::new(r"(?m)^cmake\s").unwrap();
-        let bazel_re = Regex::new(r"(?m)^bazel\s").unwrap();
-        let github_actions_re = Regex::new(r"(?m)^\s*(uses:|runs-on:|steps:)").unwrap();
-        let url_re = Regex::new(r"(?i)\b(https?|ftp)://[^\s/$.?#].[^\s]*").unwrap();
-        let email_re = Regex::new(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b").unwrap();
-        let json_re = Regex::new(r"(?s)^\s*[\{\[][\s\S]*[\}\]]\s*$").unwrap();
-        let xml_re = Regex::new(r"(?i)^\s*<\?xml|^\s*<([a-z][\w-]*)(?:\s[^>]*)?>").unwrap();
-        let sql_re =
-            Regex::new(r"(?i)^\s*(select|insert|update|delete|create|alter|drop)\b").unwrap();
-        let windows_path_re = Regex::new(r"^[a-zA-Z]:\\").unwrap();
-        let unix_path_re = Regex::new(r"^(/[^/]+)+/?$").unwrap();
-        let code_block_re = Regex::new(r"(?s)```[\s\S]*```").unwrap();
-        let shell_op_re = Regex::new(r"(\|\||&&|>>|<<|;\s)").unwrap();
 
         loop {
             thread::sleep(Duration::from_millis(350));
@@ -110,107 +114,102 @@ pub fn start_listener(app: AppHandle) {
             }
 
             let mut scores: HashMap<String, f32> = HashMap::new();
+            let first = first_token_lowercase(&normalized);
 
-            if docker_re.is_match(&normalized) {
+            if starts_with_any(&first, &["docker", "docker-compose"]) {
                 add_score(&mut scores, "Docker", 0.98);
                 add_score(&mut scores, "DevOps", 0.92);
             }
-            if kubectl_re.is_match(&normalized) || helm_re.is_match(&normalized) {
+            if starts_with_any(&first, &["kubectl", "helm"]) {
                 add_score(&mut scores, "Kubernetes", 0.98);
                 add_score(&mut scores, "DevOps", 0.92);
             }
-            if terraform_re.is_match(&normalized) || ansible_re.is_match(&normalized) {
+            if first == "terraform" || first.starts_with("ansible") {
                 add_score(&mut scores, "IaC", 0.95);
                 add_score(&mut scores, "DevOps", 0.9);
             }
-            if aws_re.is_match(&normalized)
-                || gcloud_re.is_match(&normalized)
-                || az_re.is_match(&normalized)
-            {
+            if starts_with_any(&first, &["aws", "gcloud", "az"]) {
                 add_score(&mut scores, "Cloud CLI", 0.93);
                 add_score(&mut scores, "DevOps", 0.88);
             }
-            if git_re.is_match(&normalized) || gh_re.is_match(&normalized) || svn_re.is_match(&normalized)
-            {
+            if starts_with_any(&first, &["git", "gh", "svn"]) {
                 add_score(&mut scores, "Version Control", 0.97);
             }
-            if npm_re.is_match(&normalized)
-                || npx_re.is_match(&normalized)
-                || yarn_re.is_match(&normalized)
-                || pnpm_re.is_match(&normalized)
-                || pip_re.is_match(&normalized)
-                || poetry_re.is_match(&normalized)
-                || cargo_re.is_match(&normalized)
-                || go_mod_re.is_match(&normalized)
-                || brew_re.is_match(&normalized)
-                || apt_re.is_match(&normalized)
-                || yum_re.is_match(&normalized)
+            if starts_with_any(
+                &first,
+                &[
+                    "npm", "npx", "yarn", "pnpm", "pip", "pip3", "poetry", "cargo", "brew",
+                    "apt", "apt-get", "yum", "dnf",
+                ],
+            ) || (first == "go"
+                && normalized
+                    .split_whitespace()
+                    .nth(1)
+                    .map(|s| matches!(s, "mod" | "get" | "build" | "run"))
+                    .unwrap_or(false))
             {
                 add_score(&mut scores, "Package Management", 0.9);
             }
-            if node_re.is_match(&normalized)
-                || python_re.is_match(&normalized)
-                || java_re.is_match(&normalized)
-                || mvn_re.is_match(&normalized)
-                || gradle_re.is_match(&normalized)
-                || dotnet_re.is_match(&normalized)
-                || rustc_re.is_match(&normalized)
-            {
+            if starts_with_any(
+                &first,
+                &[
+                    "node", "python", "python3", "java", "mvn", "gradle", "dotnet", "rustc",
+                ],
+            ) {
                 add_score(&mut scores, "Runtime / Build", 0.84);
             }
-            if bash_re.is_match(&normalized)
-                || zsh_re.is_match(&normalized)
-                || powershell_re.is_match(&normalized)
-                || shell_op_re.is_match(&normalized)
+            if starts_with_any(
+                &first,
+                &[
+                    "cd", "ls", "pwd", "cp", "mv", "rm", "cat", "less", "grep", "find", "chmod",
+                    "chown", "zsh",
+                ],
+            ) || first.starts_with("get-")
+                || first.starts_with("set-")
+                || first.starts_with("new-")
+                || first.starts_with("remove-")
+                || normalized.contains("||")
+                || normalized.contains("&&")
+                || normalized.contains(">>")
+                || normalized.contains("<<")
+                || normalized.contains("; ")
             {
                 add_score(&mut scores, "Shell / OS", 0.82);
             }
-            if curl_re.is_match(&normalized)
-                || wget_re.is_match(&normalized)
-                || httpie_re.is_match(&normalized)
-                || ping_re.is_match(&normalized)
-                || netstat_re.is_match(&normalized)
-                || lsof_re.is_match(&normalized)
+            if starts_with_any(&first, &["curl", "wget", "http", "ping", "netstat", "ss", "lsof"])
             {
                 add_score(&mut scores, "Networking", 0.86);
             }
-            if psql_re.is_match(&normalized)
-                || mysql_re.is_match(&normalized)
-                || redis_re.is_match(&normalized)
-                || mongo_re.is_match(&normalized)
-                || sqlite_re.is_match(&normalized)
-                || sql_re.is_match(&normalized)
-            {
+            if starts_with_any(
+                &first,
+                &["psql", "mysql", "redis-cli", "mongo", "sqlite3", "select", "insert", "update", "delete", "create", "alter", "drop"],
+            ) {
                 add_score(&mut scores, "Database", 0.9);
             }
-            if make_re.is_match(&normalized)
-                || cmake_re.is_match(&normalized)
-                || bazel_re.is_match(&normalized)
-                || github_actions_re.is_match(&normalized)
+            if starts_with_any(&first, &["make", "cmake", "bazel"])
+                || normalized.contains("runs-on:")
+                || normalized.contains("uses:")
+                || normalized.contains("steps:")
             {
                 add_score(&mut scores, "CI / Build", 0.88);
             }
-            if url_re.is_match(&normalized) {
+            if looks_like_url(&normalized) {
                 add_score(&mut scores, "URL", 0.97);
                 add_score(&mut scores, "Web", 0.9);
             }
-            if email_re.is_match(&normalized) {
+            if looks_like_email(&normalized) {
                 add_score(&mut scores, "Email", 0.9);
             }
-            if json_re.is_match(&normalized) {
+            if looks_like_json(&normalized) {
                 add_score(&mut scores, "JSON", 0.92);
             }
-            if xml_re.is_match(&normalized) {
+            if looks_like_xml(&normalized) {
                 add_score(&mut scores, "XML", 0.88);
             }
-            if windows_path_re.is_match(&normalized) || unix_path_re.is_match(&normalized) {
+            if looks_like_windows_path(&normalized) || looks_like_unix_path(&normalized) {
                 add_score(&mut scores, "Path", 0.86);
             }
-            if code_block_re.is_match(&normalized)
-                || normalized.contains("function ")
-                || normalized.contains("class ")
-                || normalized.contains("=>")
-            {
+            if looks_like_code_snippet(&normalized) {
                 add_score(&mut scores, "Code Snippet", 0.8);
             }
             if scores.is_empty() {

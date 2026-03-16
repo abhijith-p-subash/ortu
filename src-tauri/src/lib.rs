@@ -4,14 +4,18 @@ mod commands;
 mod db;
 
 use db::ClipboardDB;
+use std::fs;
+use std::io::Write;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use sysinfo::System;
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::TrayIconBuilder;
 use tauri::Manager;
+#[cfg(not(target_os = "windows"))]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
+#[cfg(not(target_os = "windows"))]
 use tauri_plugin_autostart::ManagerExt;
+#[cfg(not(target_os = "windows"))]
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 
 #[cfg(target_os = "windows")]
@@ -36,29 +40,44 @@ pub struct PopupPasteTarget(pub Mutex<Option<String>>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_log::Builder::new().build())
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec!["--hidden"]),
-        ))
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    install_panic_hook();
+    configure_windows_webview2();
+    startup_trace("run: builder init");
+
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main_window(app);
-        }))
-        // ---------------- CRITICAL FIX: Safe Global Shortcut Init ----------------
-        // Initialize the plugin without shortcuts to prevent startup panics.
-        // We register shortcuts safely in the setup hook.
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, s, e| {
-                    if e.state == ShortcutState::Pressed && s.matches(Modifiers::ALT, Code::KeyV) {
-                        toggle_popup(app);
-                    }
-                })
-                .build(),
-        )
+        }));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        builder = builder
+            .plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                Some(vec![]),
+            ))
+            .plugin(
+                tauri_plugin_global_shortcut::Builder::new()
+                    .with_handler(|app, s, e| {
+                        if e.state == ShortcutState::Pressed
+                            && s.matches(Modifiers::ALT, Code::KeyV)
+                        {
+                            toggle_popup(app);
+                        }
+                    })
+                    .build(),
+            );
+    }
+
+    builder
         .setup(|app| {
+            startup_trace("setup: entered");
             // ---------------- SAFE GLOBAL SHORTCUT REGISTRATION ----------------
+            #[cfg(not(target_os = "windows"))]
             {
                 use tauri_plugin_global_shortcut::GlobalShortcutExt;
                 let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::KeyV);
@@ -80,37 +99,36 @@ pub fn run() {
                 }
             }
 
-            if !is_hidden {
+            if is_hidden {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            } else {
                 show_main_window(app.handle());
             }
 
             // ---------------- DB INIT ----------------
-            let db = ClipboardDB::new(app.handle())?;
+            startup_trace("setup: db init start");
+            let db = match ClipboardDB::new(app.handle()) {
+                Ok(db) => {
+                    startup_trace("setup: db init ok");
+                    db
+                }
+                Err(e) => {
+                    startup_trace(&format!("setup: db init error: {}", e));
+                    return Err(e.into());
+                }
+            };
             let boot_session_id = current_boot_session_id();
-            let _ = db.clear_ephemeral_on_boot_change(&boot_session_id)?;
+            match db.clear_ephemeral_on_boot_change(&boot_session_id) {
+                Ok(_) => startup_trace("setup: boot cleanup ok"),
+                Err(e) => {
+                    startup_trace(&format!("setup: boot cleanup error: {}", e));
+                    return Err(e.into());
+                }
+            }
             app.manage(db);
             app.manage(PopupPasteTarget(Mutex::new(None)));
-
-            // ---------------- TRAY ----------------
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
-
-            let tray_enabled = if let Some(icon) = app.default_window_icon().cloned() {
-                TrayIconBuilder::new()
-                    .icon(icon)
-                    .menu(&menu)
-                    .on_menu_event(|app, event| match event.id.as_ref() {
-                        "quit" => app.exit(0),
-                        "show" => show_main_window(app),
-                        _ => {}
-                    })
-                    .build(app)?;
-                true
-            } else {
-                log::warn!("Default window icon missing; skipping tray icon initialization.");
-                false
-            };
 
             // macOS: Run as background accessory app (no dock icon, stays in menu bar)
             #[cfg(target_os = "macos")]
@@ -122,21 +140,22 @@ pub fn run() {
                 apply_main_titlebar_color(&window);
             }
 
-            if tray_enabled {
-                if let Some(window) = app.get_webview_window("main") {
-                    let w = window.clone();
-                    window.on_window_event(move |e| {
-                        if let tauri::WindowEvent::CloseRequested { api, .. } = e {
-                            // Prevent the window from closing and hide instead.
-                            // This requires a tray icon path to bring the app back.
-                            api.prevent_close();
-                            let _ = w.hide();
-                        }
-                    });
-                }
+            // ---------------- POPUP WINDOW SETUP ----------------
+            #[cfg(not(target_os = "windows"))]
+            if app.get_webview_window("popup").is_none() {
+                let _ = WebviewWindowBuilder::new(app, "popup", WebviewUrl::App("/popup".into()))
+                    .title("Ortu Quick Access")
+                    .inner_size(550.0, 450.0)
+                    .resizable(false)
+                    .decorations(false)
+                    .transparent(true)
+                    .visible(false)
+                    .always_on_top(true)
+                    .skip_taskbar(true)
+                    .focused(true)
+                    .build();
             }
 
-            // ---------------- POPUP WINDOW SETUP ----------------
             if let Some(window) = app.get_webview_window("popup") {
                 let w = window.clone();
                 #[cfg(target_os = "macos")]
@@ -154,6 +173,7 @@ pub fn run() {
             }
 
             // ---------------- CLIPBOARD LISTENER ----------------
+            startup_trace("setup: start clipboard listener");
             clipboard::start_listener(app.handle().clone());
 
             // ---------------- CLEANUP TASK ----------------
@@ -169,19 +189,23 @@ pub fn run() {
 
             // ---------------- AUTOSTART ----------------
             // Only enable autostart if logic requires it, avoid aggressive re-enabling which might corrupt registry
-            let autostart_manager = app.autolaunch();
-            if let Ok(enabled) = autostart_manager.is_enabled() {
-                if !enabled {
-                    log::info!("Autostart not enabled. Enabling...");
-                    match autostart_manager.enable() {
-                        Ok(_) => log::info!("Autostart enabled successfully."),
-                        Err(e) => log::error!("Failed to enable autostart: {}", e),
+            #[cfg(not(target_os = "windows"))]
+            {
+                let autostart_manager = app.autolaunch();
+                if let Ok(enabled) = autostart_manager.is_enabled() {
+                    if !enabled {
+                        log::info!("Autostart not enabled. Enabling...");
+                        match autostart_manager.enable() {
+                            Ok(_) => log::info!("Autostart enabled successfully."),
+                            Err(e) => log::error!("Failed to enable autostart: {}", e),
+                        }
                     }
+                } else {
+                    log::error!("Failed to check autostart status");
                 }
-            } else {
-                log::error!("Failed to check autostart status");
             }
 
+            startup_trace("setup: completed");
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -220,6 +244,70 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri app");
+}
+
+fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        let mut message = String::new();
+        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let tid = format!("{:?}", std::thread::current().id());
+        message.push_str(&format!("\n=== panic captured [{}] thread={} ===\n", now, tid));
+
+        if let Some(location) = info.location() {
+            message.push_str(&format!(
+                "location: {}:{}\n",
+                location.file(),
+                location.line()
+            ));
+        }
+
+        if let Some(payload) = info.payload().downcast_ref::<&str>() {
+            message.push_str(&format!("payload: {}\n", payload));
+        } else if let Some(payload) = info.payload().downcast_ref::<String>() {
+            message.push_str(&format!("payload: {}\n", payload));
+        } else {
+            message.push_str("payload: <non-string>\n");
+        }
+
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        message.push_str(&format!("backtrace:\n{:?}\n", backtrace));
+
+        let dir = std::env::temp_dir().join("ortu");
+        let path = dir.join("panic.log");
+        let _ = fs::create_dir_all(&dir);
+        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&path) {
+            let _ = file.write_all(message.as_bytes());
+        }
+    }));
+}
+
+#[cfg(target_os = "windows")]
+fn configure_windows_webview2() {
+    // Force a writable user-data folder and disable GPU acceleration to avoid
+    // intermittent native WebView2 startup crashes on some Windows systems.
+    // Use a per-process profile dir to avoid lock/contention crashes on rapid relaunches.
+    let pid = std::process::id();
+    let data_dir = std::env::temp_dir()
+        .join("ortu")
+        .join("webview2-data")
+        .join(format!("pid-{}", pid));
+    let _ = fs::create_dir_all(&data_dir);
+    std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir);
+    std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-gpu");
+    startup_trace(&format!("run: windows webview2 configured (pid={})", pid));
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_windows_webview2() {}
+
+fn startup_trace(message: &str) {
+    let dir = std::env::temp_dir().join("ortu");
+    let path = dir.join("startup.log");
+    let _ = fs::create_dir_all(&dir);
+    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let _ = writeln!(file, "[{}] {}", now, message);
+    }
 }
 
 fn current_boot_session_id() -> String {
