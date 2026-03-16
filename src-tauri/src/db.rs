@@ -66,14 +66,28 @@ fn fuzzy_score(query: &str, text: &str) -> i32 {
 
 impl ClipboardDB {
     pub fn new(app_handle: &AppHandle) -> Result<Self> {
-        let app_dir = app_handle
-            .path()
-            .app_data_dir()
-            .expect("failed to get app data dir");
-        std::fs::create_dir_all(&app_dir).expect("failed to create app data dir");
-        let db_path = app_dir.join("ortu.db");
+        let conn = {
+            let preferred_path = app_handle.path().app_data_dir().ok().map(|dir| dir.join("ortu.db"));
 
-        let conn = Connection::open(db_path)?;
+            if let Some(path) = preferred_path {
+                if let Some(parent) = path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                match Connection::open(&path) {
+                    Ok(conn) => conn,
+                    Err(e) => {
+                        eprintln!(
+                            "DB: failed to open preferred DB path '{}': {}. Falling back.",
+                            path.display(),
+                            e
+                        );
+                        Self::open_fallback_connection()?
+                    }
+                }
+            } else {
+                Self::open_fallback_connection()?
+            }
+        };
 
         // Enable WAL mode for performance and enforce foreign keys
         conn.execute_batch(
@@ -208,6 +222,25 @@ impl ClipboardDB {
         })
     }
 
+    fn open_fallback_connection() -> Result<Connection> {
+        let temp_db = std::env::temp_dir().join("ortu").join("ortu.db");
+        if let Some(parent) = temp_db.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        match Connection::open(&temp_db) {
+            Ok(conn) => Ok(conn),
+            Err(e) => {
+                eprintln!(
+                    "DB: failed to open fallback DB path '{}': {}. Using in-memory DB.",
+                    temp_db.display(),
+                    e
+                );
+                Connection::open_in_memory()
+            }
+        }
+    }
+
     // --- Group CRUD ---
 
     fn ensure_group_with_type(
@@ -247,7 +280,7 @@ impl ClipboardDB {
     }
 
     pub fn clear_ephemeral_on_boot_change(&self, boot_session_id: &str) -> Result<bool> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
         let previous = Self::get_meta_value(&tx, "boot_session_id")?;
         let changed = previous.as_deref() != Some(boot_session_id);
@@ -274,7 +307,7 @@ impl ClipboardDB {
     }
 
     pub fn create_group(&self, name: String) -> Result<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO groups (name, is_system) VALUES (?1, 0)",
             params![name],
@@ -283,7 +316,7 @@ impl ClipboardDB {
     }
 
     pub fn delete_group(&self, name: String) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         // Set items in this group to NULL or we can delete them.
         // The user request said "merging categories and group feature",
         // usually delete group means either clearing the tag or deleting items.
@@ -297,7 +330,7 @@ impl ClipboardDB {
     }
 
     pub fn rename_group(&self, old_name: String, new_name: String) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE history SET category = ?1 WHERE category = ?2",
             params![new_name, old_name],
@@ -310,7 +343,7 @@ impl ClipboardDB {
     }
 
     pub fn export_group(&self, name: String, path: std::path::PathBuf) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         // Fetch items associated with this group name via item_groups
         let mut stmt = conn.prepare(
             "SELECT h.raw_content 
@@ -333,7 +366,7 @@ impl ClipboardDB {
     }
 
     pub fn export_all_txt(&self, path: std::path::PathBuf) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare("SELECT raw_content FROM history ORDER BY created_at DESC")?;
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
         let mut content = Vec::new();
@@ -389,7 +422,7 @@ impl ClipboardDB {
         groups: Vec<(String, f32)>,
         system_groups: bool,
     ) -> Result<i64> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
 
         let existing_item_id: Option<i64> = tx
@@ -441,7 +474,7 @@ impl ClipboardDB {
     }
 
     pub fn get_history(&self, search: Option<String>) -> Result<Vec<ClipboardItem>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt;
         let mut rows;
         let mut fuzzy_query: Option<String> = None;
@@ -614,7 +647,7 @@ impl ClipboardDB {
     }
 
     pub fn add_to_group(&self, item_id: i64, group_name: String) -> Result<()> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
 
         // Check if item exists to avoid generic FK error
@@ -641,7 +674,7 @@ impl ClipboardDB {
     }
 
     pub fn remove_from_group(&self, item_id: i64, group_name: String) -> Result<()> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
 
         let group_id_res: Result<i64> = tx.query_row(
@@ -674,7 +707,7 @@ impl ClipboardDB {
         // Actually, let's keep `category` column updated for now as a "primary" category or just for backward compat
         // until we fully migrate the UI.
 
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         // Update legacy column
         conn.execute(
@@ -688,7 +721,7 @@ impl ClipboardDB {
     }
 
     pub fn find_similar_category(&self, content: &str) -> Result<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         // Simple logic: find items that share the first 10-15 characters if it's a command
         if content.len() < 5 {
             return Ok(None);
@@ -714,13 +747,13 @@ impl ClipboardDB {
     }
 
     pub fn delete_item(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM history WHERE id = ?1", params![id])?;
         Ok(())
     }
 
     pub fn get_item_payload(&self, id: i64) -> Result<(String, String)> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.query_row(
             "SELECT content_type, raw_content FROM history WHERE id = ?1",
             params![id],
@@ -729,7 +762,7 @@ impl ClipboardDB {
     }
 
     pub fn toggle_permanent(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE history SET is_permanent = NOT is_permanent WHERE id = ?1",
             params![id],
@@ -744,7 +777,7 @@ impl ClipboardDB {
     }
 
     pub fn get_categories(&self) -> Result<Vec<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt =
             conn.prepare("SELECT name FROM groups WHERE is_system = 0 ORDER BY name ASC")?;
         let rows = stmt.query_map([], |row| row.get(0))?;
@@ -756,7 +789,7 @@ impl ClipboardDB {
     }
 
     pub fn list_snippets(&self) -> Result<Vec<Snippet>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, name, body, created_at, updated_at
              FROM snippets
@@ -775,7 +808,7 @@ impl ClipboardDB {
     }
 
     pub fn upsert_snippet(&self, name: String, body: String) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO snippets (name, body, created_at, updated_at)
              VALUES (?1, ?2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -788,7 +821,7 @@ impl ClipboardDB {
     }
 
     pub fn delete_snippet(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM snippets WHERE id = ?1", params![id])?;
         Ok(())
     }
@@ -796,7 +829,7 @@ impl ClipboardDB {
     // --- Backup & Restore ---
 
     pub fn get_all_data_json(&self, selected_groups: Option<Vec<String>>) -> Result<String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         // 1. Determine which items to fetch
         let sql = if let Some(ref groups) = selected_groups {
@@ -923,7 +956,7 @@ impl ClipboardDB {
         let backup: BackupData = serde_json::from_str(json_content)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
 
         if mode == "replace" {
@@ -994,3 +1027,4 @@ impl ClipboardDB {
         Ok(())
     }
 }
+
