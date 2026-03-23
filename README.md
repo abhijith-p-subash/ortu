@@ -34,7 +34,7 @@ It is designed for fast recall, keyboard-driven access, and organized clipboard 
 - Node.js (LTS recommended): <https://nodejs.org/>
 - Platform dependencies:
 - macOS: Xcode Command Line Tools
-- Linux: `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`
+- Linux: `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libxdo-dev`
 - Windows: WebView2 Runtime and MSVC build tools
 
 ## Quick Start
@@ -62,6 +62,27 @@ Typical artifacts:
 - macOS: `Option + V`
 - Windows: `Alt + V`
 - Linux: `Alt + V`
+
+## Start On Login
+
+Ortu is configured to hide the main window to the tray when launched with the
+`--hidden` argument. The app's autostart integration uses that mode so it can
+start on login without opening the main window.
+
+- macOS: autostart uses a LaunchAgent.
+- Linux: autostart entries are typically stored in `~/.config/autostart/` as a
+  `.desktop` file.
+- Windows: autostart is managed through the current user's startup integration.
+
+On Linux, if you want to inspect or remove the autostart entry manually, check:
+
+```bash
+ls ~/.config/autostart
+```
+
+If your desktop environment does not honor the generated autostart entry, you
+can also manage startup applications from your system settings UI and point it
+to the built Ortu executable with the `--hidden` argument.
 
 ## macOS Gatekeeper Workaround (No Apple Developer Account)
 

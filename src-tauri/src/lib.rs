@@ -55,7 +55,7 @@ pub fn run() {
     builder = builder
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec![]),
+            Some(vec!["--hidden".into()]),
         ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
