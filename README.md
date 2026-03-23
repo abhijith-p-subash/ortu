@@ -37,6 +37,23 @@ It is designed for fast recall, keyboard-driven access, and organized clipboard 
 - Linux: `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libxdo-dev`
 - Windows: WebView2 Runtime and MSVC build tools
 
+After installing Rust with `rustup`, make sure Cargo is on your shell `PATH`.
+
+For the current shell:
+
+```bash
+source "$HOME/.cargo/env"
+```
+
+To make it persistent on Linux/macOS with `bash`:
+
+```bash
+echo 'source "$HOME/.cargo/env"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+If you use another shell, update its startup file accordingly.
+
 ## Quick Start
 
 ```bash
@@ -56,6 +73,23 @@ Typical artifacts:
 - macOS: `.app`, `.dmg`
 - Windows: `.exe`, `.msi`
 - Linux: `.deb`, `AppImage`
+
+Explicit package commands:
+
+```bash
+pnpm run tauri:build
+pnpm run tauri:build:appimage
+```
+
+Artifact locations:
+- Linux `.deb`: `src-tauri/target/release/bundle/deb/`
+- Linux `.rpm`: `src-tauri/target/release/bundle/rpm/`
+- Linux `.AppImage`: `src-tauri/target/release/bundle/appimage/`
+
+Notes:
+- Build Linux packages on a Linux machine.
+- `pnpm run tauri:build` may produce distro packages like `.deb` and `.rpm`.
+- If you specifically want an AppImage, use `pnpm run tauri:build:appimage`.
 
 ## Hotkeys
 

@@ -10,6 +10,8 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
+    "tauri:build": "tauri build",
+    "tauri:build:appimage": "tauri build --bundles appimage",
     "version-up": "node update-version.mjs"
   },
   "license": "MIT",
