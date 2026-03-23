@@ -79,6 +79,7 @@ Explicit package commands:
 ```bash
 pnpm run tauri:build
 pnpm run tauri:build:appimage
+pnpm run linux:install-appimage
 ```
 
 Artifact locations:
@@ -90,6 +91,13 @@ Notes:
 - Build Linux packages on a Linux machine.
 - `pnpm run tauri:build` may produce distro packages like `.deb` and `.rpm`.
 - If you specifically want an AppImage, use `pnpm run tauri:build:appimage`.
+- `pnpm run linux:install-appimage` builds the AppImage from source, installs it
+  to `~/Applications/Ortu/Ortu.AppImage`, writes a launcher in
+  `~/.local/share/applications/Ortu.desktop`, and writes an autostart entry in
+  `~/.config/autostart/Ortu.desktop` that launches the installed AppImage with
+  `--hidden`.
+
+- Debug builds skip autostart auto-enable to avoid writing dev-path entries.
 
 ## Hotkeys
 
@@ -121,7 +129,7 @@ to the built Ortu executable with the `--hidden` argument.
 ## macOS Gatekeeper Workaround (No Apple Developer Account)
 
 If macOS shows:
-`"Ortu" is damaged and can’t be opened. You should move it to the Bin.`
+`"Ortu" is damaged and can't be opened. You should move it to the Bin.`
 
 run:
 

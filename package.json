@@ -12,6 +12,7 @@
     "tauri": "tauri",
     "tauri:build": "tauri build",
     "tauri:build:appimage": "tauri build --bundles appimage",
+    "linux:install-appimage": "bash ./scripts/install-linux-appimage.sh",
     "version-up": "node update-version.mjs"
   },
   "license": "MIT",

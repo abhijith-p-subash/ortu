@@ -189,7 +189,9 @@ pub fn run() {
 
             // ---------------- AUTOSTART ----------------
             // Only enable autostart if logic requires it, avoid aggressive re-enabling which might corrupt registry
-            {
+            if cfg!(debug_assertions) {
+                log::info!("Skipping autostart enable in debug builds.");
+            } else {
                 let autostart_manager = app.autolaunch();
                 if let Ok(enabled) = autostart_manager.is_enabled() {
                     if !enabled {
