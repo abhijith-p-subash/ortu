@@ -7,7 +7,6 @@
   import { platform } from "@tauri-apps/plugin-os";
   import { getVersion } from "@tauri-apps/api/app";
   import { buildSearchQuery, clipPreview } from "$lib/filters";
-  import "../app.css";
 
   let history = $state<ClipboardItem[]>([]);
   let groups = $state<string[]>([]);
@@ -2129,24 +2128,4 @@
   {/if}
 </div>
 
-<style>
-  :global(body) {
-    margin: 0;
-    overflow: hidden;
-    background: transparent;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 3px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #333;
-    border-radius: 10px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #444;
-  }
-</style>
+<style></style>

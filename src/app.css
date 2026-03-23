@@ -23,6 +23,19 @@ body {
   font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
 }
 
+html {
+  border-radius: 0.375rem !important;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  border-radius: 0.375rem !important;
+  background: transparent;
+}
+
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: #3a3f46 transparent;
@@ -42,6 +55,14 @@ body {
 
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+.popup-shell {
+  border-radius: 0.375rem !important;
 }
 
 /* Minimal radius scale for a cleaner professional look */

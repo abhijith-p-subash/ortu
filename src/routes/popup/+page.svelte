@@ -4,7 +4,6 @@
   import type { ClipboardItem } from "$lib/types";
   import { listen } from "@tauri-apps/api/event";
   import { buildSearchQuery, clipPreview } from "$lib/filters";
-  import "../../app.css";
 
   // --- STATE ---
   let history = $state<ClipboardItem[]>([]);
@@ -602,28 +601,4 @@
   </div>
 </div>
 
-<style>
-  :global(html) {
-    border-radius: 0.375rem !important;
-    overflow: hidden;
-    background: transparent;
-  }
-
-  :global(body) {
-    margin: 0;
-    overflow: hidden;
-    border-radius: 0.375rem !important;
-    background: transparent;
-  }
-
-  .popup-shell {
-    border-radius: 0.375rem !important;
-  }
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 3px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #333;
-    border-radius: 10px;
-  }
-</style>
+<style></style>
