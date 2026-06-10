@@ -12,10 +12,12 @@ pub struct ClipboardItem {
     pub id: i64,
     pub content_type: String,
     pub raw_content: String,
-    pub category: Option<String>, // Deprecated, kept for compat or primary display
-    pub groups: Vec<String>,      // New: Many-to-Many groups
+    pub category: Option<String>,
+    pub groups: Vec<String>,
     pub is_permanent: bool,
     pub created_at: String,
+    pub description: Option<String>,
+    pub is_manual: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -178,6 +180,10 @@ impl ClipboardDB {
             )",
             [],
         )?;
+
+        // Migrate: add description and is_manual columns if not present
+        let _ = conn.execute("ALTER TABLE history ADD COLUMN description TEXT", []);
+        let _ = conn.execute("ALTER TABLE history ADD COLUMN is_manual BOOLEAN DEFAULT 0", []);
 
         // Migrate existing categories into groups table
         conn.execute(
@@ -445,7 +451,7 @@ impl ClipboardDB {
             id
         } else {
             tx.execute(
-                "INSERT INTO history (content_type, raw_content, category) VALUES (?1, ?2, ?3)",
+                "INSERT INTO history (content_type, raw_content, category, is_manual) VALUES (?1, ?2, ?3, 0)",
                 params![content_type, content, primary_category],
             )?;
             tx.last_insert_rowid()
@@ -491,7 +497,7 @@ impl ClipboardDB {
 
                 if group_name.eq_ignore_ascii_case("text") {
                     stmt = conn.prepare(
-                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at
+                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0)
                          FROM history h
                          WHERE h.content_type = 'text' AND h.raw_content LIKE ?1
                          ORDER BY h.is_permanent DESC, h.created_at DESC
@@ -500,7 +506,7 @@ impl ClipboardDB {
                     rows = stmt.query(params![search_pattern])?;
                 } else if group_name.eq_ignore_ascii_case("images") {
                     stmt = conn.prepare(
-                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at
+                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0)
                          FROM history h
                          WHERE h.content_type = 'image' AND h.raw_content LIKE ?1
                          ORDER BY h.is_permanent DESC, h.created_at DESC
@@ -511,7 +517,7 @@ impl ClipboardDB {
                     || group_name.eq_ignore_ascii_case("urls")
                 {
                     stmt = conn.prepare(
-                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at
+                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0)
                          FROM history h
                          LEFT JOIN item_groups ig ON h.id = ig.item_id
                          LEFT JOIN groups g ON ig.group_id = g.id
@@ -527,12 +533,12 @@ impl ClipboardDB {
                     rows = stmt.query(params![search_pattern])?;
                 } else {
                     stmt = conn.prepare(
-                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at 
+                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0)
                          FROM history h
                          JOIN item_groups ig ON h.id = ig.item_id
                          JOIN groups g ON ig.group_id = g.id
-                         WHERE g.name = ?1 AND h.raw_content LIKE ?2
-                         ORDER BY h.is_permanent DESC, h.created_at DESC 
+                         WHERE g.name = ?1 AND (h.raw_content LIKE ?2 OR h.description LIKE ?2)
+                         ORDER BY h.is_permanent DESC, h.created_at DESC
                          LIMIT 100",
                     )?;
                     rows = stmt.query(params![group_name, search_pattern])?;
@@ -541,9 +547,10 @@ impl ClipboardDB {
                 fuzzy_query = Some(s.clone());
                 let pattern = format!("%{}%", s);
                 stmt = conn.prepare(
-                    "SELECT id, content_type, raw_content, category, is_permanent, created_at 
-                     FROM history 
+                    "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0)
+                     FROM history
                      WHERE raw_content LIKE ?1
+                        OR description LIKE ?1
                         OR category LIKE ?1
                         OR EXISTS (
                             SELECT 1
@@ -551,16 +558,16 @@ impl ClipboardDB {
                             JOIN groups g ON ig.group_id = g.id
                             WHERE ig.item_id = history.id AND g.name LIKE ?1
                         )
-                     ORDER BY is_permanent DESC, created_at DESC 
+                     ORDER BY is_permanent DESC, created_at DESC
                      LIMIT 500",
                 )?;
                 rows = stmt.query(params![pattern])?;
             }
         } else {
             stmt = conn.prepare(
-                "SELECT id, content_type, raw_content, category, is_permanent, created_at 
-                 FROM history 
-                 ORDER BY is_permanent DESC, created_at DESC 
+                "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0)
+                 FROM history
+                 ORDER BY is_permanent DESC, created_at DESC
                  LIMIT 100",
             )?;
             rows = stmt.query([])?;
@@ -577,9 +584,11 @@ impl ClipboardDB {
                 content_type: row.get(1)?,
                 raw_content: row.get(2)?,
                 category: row.get(3)?,
-                groups: Vec::new(), // Will populate below
+                groups: Vec::new(),
                 is_permanent: row.get(4)?,
                 created_at: row.get(5)?,
+                description: row.get(6)?,
+                is_manual: row.get(7)?,
             });
         }
 
@@ -834,20 +843,17 @@ impl ClipboardDB {
         // 1. Determine which items to fetch
         let sql = if let Some(ref groups) = selected_groups {
             if groups.is_empty() {
-                // Empty list means all? Or none? Assuming "All" if Option is None, but if Some([]), maybe nothing?
-                // Let's assume UI passes None for "All".
-                "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at 
+                "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0)
                   FROM history h"
             } else {
-                // Filter by groups
-                "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at 
-                  FROM history h 
-                  JOIN item_groups ig ON h.id = ig.item_id 
-                  JOIN groups g ON ig.group_id = g.id 
+                "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0)
+                  FROM history h
+                  JOIN item_groups ig ON h.id = ig.item_id
+                  JOIN groups g ON ig.group_id = g.id
                   WHERE g.name IN "
             }
         } else {
-            "SELECT id, content_type, raw_content, category, is_permanent, created_at FROM history"
+            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0) FROM history"
         };
 
         let mut final_sql = sql.to_string();
@@ -875,6 +881,8 @@ impl ClipboardDB {
                 groups: Vec::new(),
                 is_permanent: row.get(4)?,
                 created_at: row.get(5)?,
+                description: row.get(6)?,
+                is_manual: row.get(7)?,
             })
         })?;
         let mut history: Vec<ClipboardItem> = history_iter.collect::<Result<_, _>>()?;
@@ -979,8 +987,8 @@ impl ClipboardDB {
         // Restore history
         {
             let mut insert_stmt = tx.prepare(
-                "INSERT INTO history (content_type, raw_content, category, is_permanent, created_at) 
-                 VALUES (?1, ?2, ?3, ?4, ?5)"
+                "INSERT INTO history (content_type, raw_content, category, is_permanent, created_at, description, is_manual)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
             )?;
 
             // For checking existence in Merge mode
@@ -1004,14 +1012,14 @@ impl ClipboardDB {
                 }
 
                 if item_id == -1 {
-                    // New item
-                    // Note: We ignore item.id from backup to let SQLite autoincrement prevent conflicts in merge
                     insert_stmt.execute(params![
                         item.content_type,
                         item.raw_content,
                         item.category,
                         item.is_permanent,
-                        item.created_at
+                        item.created_at,
+                        item.description,
+                        item.is_manual
                     ])?;
                     item_id = tx.last_insert_rowid();
                 }
@@ -1025,6 +1033,37 @@ impl ClipboardDB {
 
         tx.commit()?;
         Ok(())
+    }
+
+    pub fn add_manual_item(
+        &self,
+        content: String,
+        description: Option<String>,
+        group_name: Option<String>,
+    ) -> Result<i64> {
+        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let tx = conn.transaction()?;
+
+        tx.execute(
+            "INSERT INTO history (content_type, raw_content, description, is_manual, is_permanent)
+             VALUES ('text', ?1, ?2, 1, 1)",
+            params![content, description],
+        )?;
+        let item_id = tx.last_insert_rowid();
+
+        if let Some(group) = group_name {
+            let trimmed = group.trim();
+            if !trimmed.is_empty() {
+                let group_id = Self::ensure_group_with_type(&tx, trimmed, false)?;
+                tx.execute(
+                    "INSERT OR IGNORE INTO item_groups (item_id, group_id) VALUES (?1, ?2)",
+                    params![item_id, group_id],
+                )?;
+            }
+        }
+
+        tx.commit()?;
+        Ok(item_id)
     }
 }
 

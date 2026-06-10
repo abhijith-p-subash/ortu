@@ -393,6 +393,18 @@ pub async fn export_all_txt(app: AppHandle, path: String) -> Result<(), String> 
 }
 
 #[tauri::command]
+pub fn add_manual_item(
+    app: AppHandle,
+    content: String,
+    description: Option<String>,
+    group_name: Option<String>,
+) -> Result<i64, String> {
+    let db = app.state::<ClipboardDB>();
+    db.add_manual_item(content, description, group_name)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn manual_cleanup(app: AppHandle) -> Result<(), String> {
     let db = app.state::<ClipboardDB>();
     db.prune_expired().map_err(|e| e.to_string())

@@ -43,12 +43,87 @@
   let showCopiedToast = $state(false);
   let copiedToastTimer: number | null = null;
 
+  // Toasts
+  interface Toast { id: number; message: string; type: "success" | "error" | "info" }
+  let toasts = $state<Toast[]>([]);
+  let toastCounter = 0;
+
+  function showToast(message: string, type: Toast["type"] = "info") {
+    const id = ++toastCounter;
+    toasts = [...toasts, { id, message, type }];
+    setTimeout(() => { toasts = toasts.filter(t => t.id !== id); }, 3000);
+  }
+
+  // Confirm modal
+  let confirmModal = $state<{ message: string; onConfirm: () => void } | null>(null);
+  function confirmAction(message: string, onConfirm: () => void) {
+    confirmModal = { message, onConfirm };
+  }
+
+  // Add Item modal
+  let showAddItemModal = $state(false);
+  let newItemContent = $state("");
+  let newItemDescription = $state("");
+  let newItemGroupInput = $state("");
+
+  // More menu
+  let showMoreMenu = $state(false);
+
+  // Update check
+  let updateAvailable = $state(false);
+  let latestVersion = $state("");
+  let releaseUrl = $state("https://github.com/abhijith-p-subash/ortu/releases/latest");
+
+  async function checkForUpdates() {
+    try {
+      const res = await fetch("https://api.github.com/repos/abhijith-p-subash/ortu/releases/latest");
+      if (!res.ok) return;
+      const data = await res.json();
+      const latest = (data.tag_name as string)?.replace(/^v/, "");
+      if (!latest || latest === appVersion) return;
+      const cur = appVersion.split(".").map(Number);
+      const rem = latest.split(".").map(Number);
+      const isNewer =
+        rem[0] > cur[0] ||
+        (rem[0] === cur[0] && rem[1] > cur[1]) ||
+        (rem[0] === cur[0] && rem[1] === cur[1] && (rem[2] ?? 0) > (cur[2] ?? 0));
+      if (isNewer) {
+        updateAvailable = true;
+        latestVersion = latest;
+        releaseUrl = (data.html_url as string) ?? releaseUrl;
+      }
+    } catch {
+      // silently ignore
+    }
+  }
+
+  async function addManualItem() {
+    if (!newItemContent.trim()) return;
+    try {
+      await invoke("add_manual_item", {
+        content: newItemContent.trim(),
+        description: newItemDescription.trim() || null,
+        groupName: newItemGroupInput.trim() || null,
+      });
+      newItemContent = "";
+      newItemDescription = "";
+      newItemGroupInput = selectedGroup || "";
+      showAddItemModal = false;
+      await loadHistory();
+      await loadGroups();
+      showToast("Item added", "success");
+    } catch (e) {
+      showToast("Failed to add item: " + e, "error");
+    }
+  }
+
   // Detect platform
   onMount(async () => {
     try {
       currentPlatform = await platform();
       appVersion = await getVersion();
       await refreshMacAccessibilityStatus();
+      setTimeout(checkForUpdates, 2000);
     } catch (e) {
       console.error("Failed to detect platform/version:", e);
     }
@@ -123,20 +198,17 @@
   }
 
   async function deleteGroup(name: string) {
-    if (
-      !confirm(
-        `Are you sure you want to delete group "${name}"? Items will NOT be deleted.`
-      )
-    )
-      return;
-    try {
-      await invoke("delete_group", { name });
-      if (selectedGroup === name) selectedGroup = null;
-      await loadGroups();
-      await loadHistory();
-    } catch (e) {
-      console.error("Failed to delete group:", e);
-    }
+    confirmAction(`Delete group "${name}"? Items will NOT be deleted.`, async () => {
+      try {
+        await invoke("delete_group", { name });
+        if (selectedGroup === name) selectedGroup = null;
+        await loadGroups();
+        await loadHistory();
+        showToast(`Group "${name}" deleted`, "success");
+      } catch (e) {
+        showToast("Failed to delete group: " + e, "error");
+      }
+    });
   }
 
   async function renameGroup() {
@@ -182,10 +254,9 @@
       });
 
       showExportModal = false;
-      alert("Export successful!");
+      showToast("Export successful", "success");
     } catch (e) {
-      console.error("Export failed:", e);
-      alert("Export failed: " + e);
+      showToast("Export failed: " + e, "error");
     } finally {
       processingIO = false;
     }
@@ -212,11 +283,10 @@
         showImportModal = false;
         await loadHistory();
         await loadGroups();
-        alert("Import successful!");
+        showToast("Import successful", "success");
       }
     } catch (e) {
-      console.error(e);
-      alert("Error: " + e);
+      showToast("Import failed: " + e, "error");
     } finally {
       processingIO = false;
     }
@@ -230,10 +300,10 @@
       });
       if (path && typeof path === "string") {
         await invoke("export_group", { name, path });
-        alert("Export successful!");
+        showToast("Group exported", "success");
       }
     } catch (e) {
-      console.error("Failed to export group:", e);
+      showToast("Export failed: " + e, "error");
     }
   }
 
@@ -245,12 +315,16 @@
       });
       if (path && typeof path === "string") {
         await invoke("export_all_txt", { path });
-        alert("Full export successful!");
+        showToast("Full export successful", "success");
       }
     } catch (e) {
-      console.error("Failed to export all:", e);
+      showToast("Export failed: " + e, "error");
     }
   }
+
+  let importGroupNameInput = $state("");
+  let showImportGroupModal = $state(false);
+  let importGroupPath = $state("");
 
   async function importGroup() {
     try {
@@ -258,16 +332,25 @@
         filters: [{ name: "Text", extensions: ["txt"] }],
       });
       if (path && typeof path === "string") {
-        const groupName = prompt("Enter name for the imported group:");
-        if (groupName) {
-          await invoke("import_group", { name: groupName, path });
-          await loadGroups();
-          await loadHistory();
-          alert("Import successful!");
-        }
+        importGroupPath = path;
+        importGroupNameInput = "";
+        showImportGroupModal = true;
       }
     } catch (e) {
-      console.error("Failed to import group:", e);
+      showToast("Failed to open file: " + e, "error");
+    }
+  }
+
+  async function confirmImportGroup() {
+    if (!importGroupNameInput.trim()) return;
+    try {
+      await invoke("import_group", { name: importGroupNameInput.trim(), path: importGroupPath });
+      await loadGroups();
+      await loadHistory();
+      showImportGroupModal = false;
+      showToast("Group imported", "success");
+    } catch (e) {
+      showToast("Import failed: " + e, "error");
     }
   }
 
@@ -498,130 +581,86 @@
       </div>
     </div>
     <div class="flex items-center space-x-2">
+      <!-- Add Item -->
       <button
-        onclick={openExportModal}
-        class="flex items-center space-x-2 px-3 py-1.5 bg-[#343a42] hover:bg-[#2a3038] rounded-md border border-[#333] transition-all text-xs font-semibold"
-        title="Full Backup (.json)"
+        onclick={() => { newItemGroupInput = selectedGroup || ""; showAddItemModal = true; }}
+        class="flex items-center space-x-1.5 px-3 py-1.5 bg-[#FF8A3D] hover:bg-[#e67d36] rounded-md text-white transition-all text-xs font-bold shadow-md shadow-[#FF8A3D]/20"
+        title="Add item to a group"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          ><path
-            d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
-          ></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline
-            points="7 3 7 8 15 8"
-          ></polyline></svg
-        >
-        <span>Backup</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span>Add Item</span>
       </button>
-      <button
-        onclick={openImportModal}
-        class="flex items-center space-x-2 px-3 py-1.5 bg-[#343a42] hover:bg-[#2a3038] rounded-md border border-[#333] transition-all text-xs font-semibold"
-        title="Restore Data (.json)"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline
-            points="7 10 12 15 17 10"
-          ></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg
-        >
-        <span>Restore</span>
-      </button>
-      <div class="w-px h-4 bg-[#333] mx-1"></div>
-      <button
-        onclick={exportAllTxt}
-        class="flex items-center space-x-2 px-3 py-1.5 bg-[#343a42] hover:bg-[#2a3038] rounded-md border border-[#333] transition-all text-xs font-semibold"
-        title="Export All to .TXT"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline
-            points="17 8 12 3 7 8"
-          /><line x1="12" y1="3" x2="12" y2="15" /></svg
-        >
-        <span>Export All</span>
-      </button>
+      <!-- Manage Groups -->
       <button
         onclick={() => (isViewingGroups = true)}
-        class="flex items-center space-x-2 px-4 py-1.5 bg-[#AEB291] hover:bg-[#4d514a] rounded-md shadow-lg shadow-[#AEB291]/25 text-white transition-all text-xs font-bold"
+        class="flex items-center space-x-1.5 px-3 py-1.5 bg-[#343a42] hover:bg-[#2a3038] rounded-md border border-[#333] transition-all text-xs font-semibold"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          ><path
-            d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-          ></path></svg
-        >
-        <span>Manage Groups</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span>Groups</span>
       </button>
-      <div class="w-px h-4 bg-[#333] mx-1"></div>
-      <button
-        onclick={() => (showHelpModal = true)}
-        class="p-1.5 hover:bg-[#343a42] rounded-md transition-all text-zinc-400 hover:text-white"
-        title="Help"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          ><circle cx="12" cy="12" r="10"></circle><path
-            d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"
-          ></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg
+      <div class="w-px h-4 bg-[#333]"></div>
+      <!-- More menu -->
+      <div class="relative">
+        <button
+          onclick={() => (showMoreMenu = !showMoreMenu)}
+          class="p-1.5 hover:bg-[#343a42] rounded-md transition-all text-zinc-400 hover:text-white"
+          title="More options"
         >
-      </button>
-      <button
-        onclick={() => (showAboutModal = true)}
-        class="p-1.5 hover:bg-[#343a42] rounded-md transition-all text-zinc-400 hover:text-white"
-        title="About"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          ><circle cx="12" cy="12" r="10"></circle><line
-            x1="12"
-            y1="16"
-            x2="12"
-            y2="12"
-          ></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg
-        >
-      </button>
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+        </button>
+        {#if showMoreMenu}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            role="menu"
+            tabindex="-1"
+            class="absolute right-0 top-8 w-44 bg-[#1e2228] border border-[#333] rounded-xl shadow-2xl z-50 py-1 overflow-hidden"
+            onmouseleave={() => (showMoreMenu = false)}
+          >
+            <button onclick={() => { showMoreMenu = false; openExportModal(); }} class="w-full text-left px-4 py-2 text-xs text-zinc-300 hover:bg-[#343a42] hover:text-white flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              Backup
+            </button>
+            <button onclick={() => { showMoreMenu = false; openImportModal(); }} class="w-full text-left px-4 py-2 text-xs text-zinc-300 hover:bg-[#343a42] hover:text-white flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Restore
+            </button>
+            <button onclick={() => { showMoreMenu = false; exportAllTxt(); }} class="w-full text-left px-4 py-2 text-xs text-zinc-300 hover:bg-[#343a42] hover:text-white flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Export All (.txt)
+            </button>
+            <div class="h-px bg-[#333] my-1"></div>
+            <button onclick={() => { showMoreMenu = false; showHelpModal = true; }} class="w-full text-left px-4 py-2 text-xs text-zinc-300 hover:bg-[#343a42] hover:text-white flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Help
+            </button>
+            <button onclick={() => { showMoreMenu = false; showAboutModal = true; }} class="w-full text-left px-4 py-2 text-xs text-zinc-300 hover:bg-[#343a42] hover:text-white flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              About
+            </button>
+          </div>
+        {/if}
+      </div>
     </div>
   </header>
+
+  {#if updateAvailable}
+    <section class="mx-4 mt-3 rounded-md border border-[#AEB291]/40 bg-[#AEB291]/10 px-4 py-2.5 flex items-center justify-between">
+      <p class="text-xs text-zinc-300">
+        <span class="font-bold text-white">Update available</span> — v{latestVersion} is ready to download.
+      </p>
+      <div class="flex items-center gap-2 shrink-0">
+        <a
+          href={releaseUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="rounded-md bg-[#AEB291] px-3 py-1 text-xs font-bold text-[#171a1d] hover:bg-[#c5c9a5] transition-all"
+        >
+          Download
+        </a>
+        <button onclick={() => (updateAvailable = false)} class="text-zinc-500 hover:text-white text-xs">✕</button>
+      </div>
+    </section>
+  {/if}
 
   {#if currentPlatform === "macos" && !macAccessibilityGranted}
     <section
@@ -801,12 +840,16 @@
         </button>
       </div>
 
-      <!-- Static Groups Header -->
-      <div class="pt-4 pb-2 px-4">
-        <span
-          class="text-[10px] font-bold uppercase tracking-widest text-zinc-600"
-          >Groups</span
+      <!-- Groups Header -->
+      <div class="pt-4 pb-2 px-4 flex items-center justify-between">
+        <span class="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Groups</span>
+        <button
+          onclick={() => (isViewingGroups = true)}
+          class="text-zinc-600 hover:text-[#AEB291] transition-colors"
+          title="Manage groups"
         >
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
       </div>
 
       <!-- Scrollable Groups List -->
@@ -1008,6 +1051,9 @@
             >
               <div class="flex items-start justify-between gap-3 min-w-0">
                 <div class="min-w-0 flex-1">
+                  {#if item.description}
+                    <p class="text-[11px] font-semibold text-[#AEB291] mb-1 truncate">{item.description}</p>
+                  {/if}
                   <div class="relative">
                     <p
                       class="text-[13px] text-zinc-100 font-normal leading-relaxed break-all whitespace-pre-wrap max-w-full {expandedItems.includes(
@@ -1178,6 +1224,9 @@
                     >
                       {item.category}
                     </button>
+                  {/if}
+                  {#if item.is_manual}
+                    <span class="text-[9px] font-bold uppercase px-1.5 py-0.5 bg-[#FF8A3D]/15 text-[#FF8A3D]/80 rounded border border-[#FF8A3D]/25">manual</span>
                   {/if}
                   <span class="text-[10px] text-zinc-600 font-medium">
                     {new Date(item.created_at).toLocaleString([], {
@@ -2103,30 +2152,158 @@
     </div>
   {/if}
 
-  <!-- Copied Toast Notification -->
-  {#if showCopiedToast}
+  <!-- Add Item Modal -->
+  {#if showAddItemModal}
     <div
-      class="fixed bottom-4 right-4 bg-[#171a1d] border border-green-500/50 rounded-xl shadow-2xl shadow-green-500/20 px-4 py-3 flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-300 z-50"
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onclick={(e) => { if (e.target === e.currentTarget) showAddItemModal = false; }}
+      onkeydown={(e) => { if (e.key === "Escape") showAddItemModal = false; }}
+      role="dialog" aria-modal="true" tabindex="-1"
     >
-      <div
-        class="flex items-center justify-center w-5 h-5 bg-green-500/20 rounded-full"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="3"
-          class="text-green-500"
-        >
-          <polyline points="20 6 9 17 4 12"></polyline>
-        </svg>
+      <div class="w-full max-w-md bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div class="px-6 py-4 border-b border-[#333] flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-bold text-white">Add Item</h3>
+            <p class="text-[10px] text-zinc-500 mt-0.5">Manually add text with an optional description</p>
+          </div>
+          <button onclick={() => (showAddItemModal = false)} class="text-zinc-500 hover:text-white" aria-label="Close">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="p-6 space-y-4">
+          <div>
+            <label for="item-desc" class="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Description (optional)</label>
+            <input
+              id="item-desc"
+              type="text"
+              bind:value={newItemDescription}
+              placeholder="Short label e.g. 'AWS prod key'"
+              class="w-full bg-[#2a2f35] border border-[#333] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium placeholder:text-zinc-600"
+              maxlength="120"
+            />
+          </div>
+          <div>
+            <label for="item-content" class="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Content <span class="text-[#FF8A3D]">*</span></label>
+            <textarea
+              id="item-content"
+              bind:value={newItemContent}
+              placeholder="Paste or type your content here..."
+              rows="5"
+              class="w-full bg-[#2a2f35] border border-[#333] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium placeholder:text-zinc-600 resize-none"
+              onkeydown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) addManualItem(); }}
+            ></textarea>
+          </div>
+          <div>
+            <label for="item-group" class="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Group (optional)</label>
+            <input
+              id="item-group"
+              type="text"
+              bind:value={newItemGroupInput}
+              placeholder="Group name or leave empty"
+              list="groups-datalist"
+              class="w-full bg-[#2a2f35] border border-[#333] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium placeholder:text-zinc-600"
+              onkeydown={(e) => { if (e.key === "Enter") addManualItem(); }}
+            />
+            <datalist id="groups-datalist">
+              {#each groups as g}<option value={g}></option>{/each}
+            </datalist>
+          </div>
+        </div>
+        <div class="px-6 pb-6 flex justify-end gap-3">
+          <button onclick={() => (showAddItemModal = false)} class="px-4 py-2 text-xs text-zinc-500 font-bold hover:text-white transition-colors">Cancel</button>
+          <button
+            onclick={addManualItem}
+            disabled={!newItemContent.trim()}
+            class="px-6 py-2 bg-[#FF8A3D] text-white rounded-xl text-xs font-bold shadow-lg shadow-[#FF8A3D]/25 hover:bg-[#e67d36] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Add Item
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Confirm Modal -->
+  {#if confirmModal}
+    <div
+      class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onclick={(e) => { if (e.target === e.currentTarget) confirmModal = null; }}
+      onkeydown={(e) => { if (e.key === "Escape") confirmModal = null; }}
+      role="dialog" aria-modal="true" tabindex="-1"
+    >
+      <div class="w-full max-w-xs bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
+        <p class="text-sm text-zinc-200 mb-5">{confirmModal.message}</p>
+        <div class="flex justify-end gap-3">
+          <button onclick={() => (confirmModal = null)} class="px-4 py-2 text-xs text-zinc-500 font-bold hover:text-white transition-colors">Cancel</button>
+          <button
+            onclick={() => { const cb = confirmModal?.onConfirm; confirmModal = null; cb?.(); }}
+            class="px-5 py-2 bg-[#FF8A3D] text-white rounded-xl text-xs font-bold hover:bg-[#e67d36] transition-all"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Import Group Name Modal -->
+  {#if showImportGroupModal}
+    <div
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      role="dialog" aria-modal="true" tabindex="-1"
+    >
+      <div class="w-full max-w-xs bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
+        <h3 class="text-sm font-bold text-white mb-4">Name for imported group</h3>
+        <input
+          type="text"
+          bind:value={importGroupNameInput}
+          placeholder="Group name..."
+          class="w-full bg-[#2a2f35] border border-[#333] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all mb-4"
+          onkeydown={(e) => { if (e.key === "Enter") confirmImportGroup(); if (e.key === "Escape") showImportGroupModal = false; }}
+        />
+        <div class="flex justify-end gap-3">
+          <button onclick={() => (showImportGroupModal = false)} class="px-4 py-2 text-xs text-zinc-500 font-bold hover:text-white transition-colors">Cancel</button>
+          <button
+            onclick={confirmImportGroup}
+            disabled={!importGroupNameInput.trim()}
+            class="px-5 py-2 bg-[#AEB291] text-white rounded-xl text-xs font-bold hover:bg-[#4d514a] transition-all disabled:opacity-40"
+          >
+            Import
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Copied Toast -->
+  {#if showCopiedToast}
+    <div class="fixed bottom-4 right-4 bg-[#171a1d] border border-green-500/50 rounded-xl shadow-2xl shadow-green-500/20 px-4 py-3 flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-300 z-50">
+      <div class="flex items-center justify-center w-5 h-5 bg-green-500/20 rounded-full">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="text-green-500"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
       <span class="text-sm font-semibold text-white">Copied!</span>
     </div>
   {/if}
+
+  <!-- Toast stack -->
+  <div class="fixed bottom-4 left-4 z-50 flex flex-col gap-2 pointer-events-none">
+    {#each toasts as toast (toast.id)}
+      <div class="pointer-events-auto px-4 py-3 rounded-xl border shadow-2xl flex items-center gap-3 animate-in slide-in-from-left-5 duration-300
+        {toast.type === 'success' ? 'bg-[#171a1d] border-green-500/50 shadow-green-500/10' :
+         toast.type === 'error'   ? 'bg-[#171a1d] border-red-500/50 shadow-red-500/10' :
+                                    'bg-[#171a1d] border-[#AEB291]/40 shadow-[#AEB291]/10'}"
+      >
+        {#if toast.type === 'success'}
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="text-green-500 shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
+        {:else if toast.type === 'error'}
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-red-400 shrink-0"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        {:else}
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-[#AEB291] shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        {/if}
+        <span class="text-xs font-semibold text-white">{toast.message}</span>
+      </div>
+    {/each}
+  </div>
 </div>
 
 <style>

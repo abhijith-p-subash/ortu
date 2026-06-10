@@ -235,6 +235,7 @@ pub fn run() {
             commands::add_to_group,
             commands::remove_from_group,
             commands::export_all_txt,
+            commands::add_manual_item,
             commands::list_snippets,
             commands::save_snippet,
             commands::delete_snippet,

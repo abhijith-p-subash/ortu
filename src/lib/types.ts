@@ -6,6 +6,8 @@ export interface ClipboardItem {
     groups: string[];
     is_permanent: boolean;
     created_at: string;
+    description: string | null;
+    is_manual: boolean;
 }
 
 export interface Snippet {
