@@ -139,12 +139,9 @@
       macAccessibilityGranted = true;
       return;
     }
-
     try {
       checkingMacAccessibility = true;
-      macAccessibilityGranted = (await invoke(
-        "get_macos_accessibility_status"
-      )) as boolean;
+      macAccessibilityGranted = (await invoke("get_macos_accessibility_status")) as boolean;
     } catch (e) {
       console.error("Failed to check macOS Accessibility status:", e);
       macAccessibilityGranted = false;
@@ -166,9 +163,7 @@
       const search = selectedGroup
         ? buildSearchQuery(selectedGroup, searchQuery)
         : buildSearchQuery(null, searchQuery);
-      const data = (await invoke("get_history", {
-        search: search || null,
-      })) as ClipboardItem[];
+      const data = (await invoke("get_history", { search: search || null })) as ClipboardItem[];
       history = data;
       if (selectedIndex >= history.length) {
         selectedIndex = Math.max(0, history.length - 1);
@@ -214,10 +209,7 @@
   async function renameGroup() {
     if (!editingGroup || !editGroupName.trim()) return;
     try {
-      await invoke("rename_group", {
-        oldName: editingGroup,
-        newName: editGroupName.trim(),
-      });
+      await invoke("rename_group", { oldName: editingGroup, newName: editGroupName.trim() });
       if (selectedGroup === editingGroup) selectedGroup = editGroupName.trim();
       editingGroup = null;
       editGroupName = "";
@@ -230,10 +222,7 @@
 
   async function openExportModal() {
     exportSelectedGroups = [];
-    if (
-      selectedGroup &&
-      !["URL", "Dev", "Code", "Images", "Text"].includes(selectedGroup)
-    ) {
+    if (selectedGroup && !["URL", "Dev", "Code", "Images", "Text"].includes(selectedGroup)) {
       exportSelectedGroups = [selectedGroup];
     }
     showExportModal = true;
@@ -246,13 +235,11 @@
         defaultPath: `ortu_backup_${new Date().toISOString().split("T")[0]}.json`,
       });
       if (!path) return;
-
       processingIO = true;
       await invoke("backup_data", {
         path,
         groups: exportSelectedGroups.length > 0 ? exportSelectedGroups : [],
       });
-
       showExportModal = false;
       showToast("Export successful", "success");
     } catch (e) {
@@ -269,17 +256,10 @@
 
   async function performImport() {
     try {
-      const path = await open({
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      });
+      const path = await open({ filters: [{ name: "JSON", extensions: ["json"] }] });
       if (path) {
         processingIO = true;
-        // path is string, explicit cast to correct type if needed (open returns string|null|string[])
-        // multiple: false by default so it returns string|null
-        await invoke("restore_data", {
-          path: path as string,
-          mode: importMode,
-        });
+        await invoke("restore_data", { path: path as string, mode: importMode });
         showImportModal = false;
         await loadHistory();
         await loadGroups();
@@ -328,9 +308,7 @@
 
   async function importGroup() {
     try {
-      const path = await open({
-        filters: [{ name: "Text", extensions: ["txt"] }],
-      });
+      const path = await open({ filters: [{ name: "Text", extensions: ["txt"] }] });
       if (path && typeof path === "string") {
         importGroupPath = path;
         importGroupNameInput = "";
@@ -370,12 +348,8 @@
       categorizingItemId ||
       (history[selectedIndex] ? history[selectedIndex].id : null);
     if (!itemId || !newGroupName.trim()) return;
-
     try {
-      await invoke("add_to_group", {
-        itemId: itemId,
-        groupName: newGroupName.trim(),
-      });
+      await invoke("add_to_group", { itemId, groupName: newGroupName.trim() });
       isCategorizing = false;
       newGroupName = "";
       await loadHistory();
@@ -397,8 +371,6 @@
   async function copyAndPaste(item: ClipboardItem) {
     try {
       await invoke("copy_item_to_clipboard", { id: item.id });
-
-      // Show copied toast
       if (copiedToastTimer) clearTimeout(copiedToastTimer);
       showCopiedToast = true;
       copiedToastTimer = window.setTimeout(() => {
@@ -430,21 +402,14 @@
       scrollIntoView();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      selectedIndex =
-        (selectedIndex - 1 + (history.length || 1)) % (history.length || 1);
+      selectedIndex = (selectedIndex - 1 + (history.length || 1)) % (history.length || 1);
       scrollIntoView();
     } else if (e.key === "Enter") {
-      if (history[selectedIndex]) {
-        copyAndPaste(history[selectedIndex]);
-      }
+      if (history[selectedIndex]) copyAndPaste(history[selectedIndex]);
     } else if (e.key === "Delete" || (e.metaKey && e.key === "Backspace")) {
-      if (history[selectedIndex]) {
-        deleteItem(history[selectedIndex]);
-      }
+      if (history[selectedIndex]) deleteItem(history[selectedIndex]);
     } else if (e.key === "p" && (e.metaKey || e.ctrlKey)) {
-      if (history[selectedIndex]) {
-        togglePermanent(history[selectedIndex]);
-      }
+      if (history[selectedIndex]) togglePermanent(history[selectedIndex]);
     } else if (e.key === "c" && (e.metaKey || e.ctrlKey)) {
       if (history[selectedIndex]) {
         e.preventDefault();
@@ -459,23 +424,16 @@
 
   function scrollIntoView() {
     if (!container) return;
-    const selectedElement = container.querySelector(
-      `[data-index="${selectedIndex}"]`
-    );
+    const selectedElement = container.querySelector(`[data-index="${selectedIndex}"]`);
     selectedElement?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
-  // Auto-scroll when selection changes
   $effect(() => {
-    if (selectedIndex !== undefined) {
-      scrollIntoView();
-    }
+    if (selectedIndex !== undefined) scrollIntoView();
   });
 
   $effect(() => {
-    if (searchQuery !== undefined || selectedGroup !== undefined) {
-      loadHistory();
-    }
+    if (searchQuery !== undefined || selectedGroup !== undefined) loadHistory();
   });
 
   onMount(() => {
@@ -491,19 +449,15 @@
     const setupListeners = async () => {
       try {
         const uFocus = await listen("tauri://focus", async () => {
-          console.log("Main window focused - refreshing");
           await loadHistory();
           await loadGroups();
           await refreshMacAccessibilityStatus();
-          // Reset select only if history was empty or search changed?
-          // For now, keep selection if possible, but focus search.
           await tick();
           searchInput?.focus();
         });
         unlistenFocus = uFocus;
 
         const uClipboard = await listen("clipboard-updated", async () => {
-          console.log("Clipboard update received in main window");
           await loadHistory();
         });
         unlistenClipboard = uClipboard;
@@ -524,117 +478,81 @@
 
   function getCategoryIcon(category: string | null): string {
     if (!category)
-      return '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline>'; // FileText
+      return '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline>';
 
     const c = category.toLowerCase();
 
     if (c === "url")
-      return '<circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>'; // Globe
+      return '<circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>';
 
-    if (
-      c.includes("docker") ||
-      c.includes("shell") ||
-      c.includes("kubernetes") ||
-      c.includes("cloud") ||
-      c.includes("terminal")
-    )
-      return '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>'; // Terminal
+    if (c.includes("docker") || c.includes("shell") || c.includes("kubernetes") || c.includes("cloud") || c.includes("terminal"))
+      return '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>';
 
     if (c.includes("git") || c.includes("version"))
-      return '<line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>'; // Git Branch
+      return '<line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>';
 
     if (c.includes("database") || c.includes("sql"))
-      return '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>'; // Database
+      return '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>';
 
-    if (
-      c.includes("code") ||
-      c.includes("runtime") ||
-      c.includes("package") ||
-      c.includes("ci")
-    )
-      return '<polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>'; // Code
+    if (c.includes("code") || c.includes("runtime") || c.includes("package") || c.includes("ci"))
+      return '<polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>';
 
-    return '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line>'; // Tag
+    return '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line>';
   }
 </script>
 
-<div
-  class="flex flex-col h-screen pt-2 bg-[#171a1d] text-zinc-300 overflow-hidden font-sans selection:bg-[#FF8A3D]/30"
->
-  <!-- Top Bar / Header -->
-  <header
-    class=" mt-4 px-4 py-3 border-b border-[#333] bg-[#171a1d] flex items-center justify-between shadow-sm"
-  >
-    <div class="flex items-center space-x-3">
-      <div
-        class="w-8 h-8 rounded-full flex items-center justify-center shadow-lg shadow-[#FF8A3D]/25"
-      >
-        <img src="/logo.png" alt="" srcset="" />
-      </div>
-      <div>
-        <h1 class="text-sm font-bold text-white tracking-tight">Ortu</h1>
-        <p
-          class="text-[10px] text-zinc-500 font-medium uppercase tracking-widest"
-        >
-          Workspace History
-        </p>
-      </div>
+<div class="flex flex-col h-screen bg-[#111214] text-zinc-300 overflow-hidden selection:bg-[#FF8A3D]/30 ">
+
+  <!-- Header -->
+  <header class="h-11 shrink-0 px-4 flex items-center justify-between border-b border-[#252a30] bg-[#111214] mt-6">
+    <div class="flex items-center gap-2.5">
+      <img src="/logo.png" alt="" class="w-5 h-5 shrink-0" />
+      <span class="text-[13px] font-bold text-white tracking-tight">Ortu</span>
     </div>
-    <div class="flex items-center space-x-2">
-      <!-- Add Item -->
+    <div class="flex items-center gap-1.5">
       <button
         onclick={() => { newItemGroupInput = selectedGroup || ""; showAddItemModal = true; }}
-        class="flex items-center space-x-1.5 px-3 py-1.5 bg-[#FF8A3D] hover:bg-[#e67d36] rounded-md text-white transition-all text-xs font-bold shadow-md shadow-[#FF8A3D]/20"
-        title="Add item to a group"
+        class="flex items-center gap-1.5 h-7 px-3 bg-[#FF8A3D] hover:bg-[#f07d34] rounded text-xs font-semibold text-[#111214] transition-colors"
+        title="Add item manually"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span>Add Item</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add
       </button>
-      <!-- Manage Groups -->
-      <button
-        onclick={() => (isViewingGroups = true)}
-        class="flex items-center space-x-1.5 px-3 py-1.5 bg-[#343a42] hover:bg-[#2a3038] rounded-md border border-[#333] transition-all text-xs font-semibold"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-        <span>Groups</span>
-      </button>
-      <div class="w-px h-4 bg-[#333]"></div>
-      <!-- More menu -->
       <div class="relative">
         <button
           onclick={() => (showMoreMenu = !showMoreMenu)}
-          class="p-1.5 hover:bg-[#343a42] rounded-md transition-all text-zinc-400 hover:text-white"
+          class="h-7 w-7 flex items-center justify-center hover:bg-[#1e2228] rounded text-zinc-500 hover:text-zinc-200 transition-colors"
           title="More options"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
         </button>
         {#if showMoreMenu}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
             role="menu"
             tabindex="-1"
-            class="absolute right-0 top-8 w-44 bg-[#1e2228] border border-[#333] rounded-xl shadow-2xl z-50 py-1 overflow-hidden"
+            class="absolute right-0 top-8 w-44 bg-[#17191c] border border-[#252a30] rounded shadow-2xl z-50 py-1"
             onmouseleave={() => (showMoreMenu = false)}
           >
-            <button onclick={() => { showMoreMenu = false; openExportModal(); }} class="w-full text-left px-4 py-2 text-xs text-zinc-300 hover:bg-[#343a42] hover:text-white flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            <button onclick={() => { showMoreMenu = false; openExportModal(); }} class="w-full text-left px-3 py-2 text-xs text-zinc-400 hover:bg-[#1e2228] hover:text-white flex items-center gap-2.5 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
               Backup
             </button>
-            <button onclick={() => { showMoreMenu = false; openImportModal(); }} class="w-full text-left px-4 py-2 text-xs text-zinc-300 hover:bg-[#343a42] hover:text-white flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <button onclick={() => { showMoreMenu = false; openImportModal(); }} class="w-full text-left px-3 py-2 text-xs text-zinc-400 hover:bg-[#1e2228] hover:text-white flex items-center gap-2.5 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Restore
             </button>
-            <button onclick={() => { showMoreMenu = false; exportAllTxt(); }} class="w-full text-left px-4 py-2 text-xs text-zinc-300 hover:bg-[#343a42] hover:text-white flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <button onclick={() => { showMoreMenu = false; exportAllTxt(); }} class="w-full text-left px-3 py-2 text-xs text-zinc-400 hover:bg-[#1e2228] hover:text-white flex items-center gap-2.5 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               Export All (.txt)
             </button>
-            <div class="h-px bg-[#333] my-1"></div>
-            <button onclick={() => { showMoreMenu = false; showHelpModal = true; }} class="w-full text-left px-4 py-2 text-xs text-zinc-300 hover:bg-[#343a42] hover:text-white flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div class="h-px bg-[#252a30] my-1"></div>
+            <button onclick={() => { showMoreMenu = false; showHelpModal = true; }} class="w-full text-left px-3 py-2 text-xs text-zinc-400 hover:bg-[#1e2228] hover:text-white flex items-center gap-2.5 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               Help
             </button>
-            <button onclick={() => { showMoreMenu = false; showAboutModal = true; }} class="w-full text-left px-4 py-2 text-xs text-zinc-300 hover:bg-[#343a42] hover:text-white flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <button onclick={() => { showMoreMenu = false; showAboutModal = true; }} class="w-full text-left px-3 py-2 text-xs text-zinc-400 hover:bg-[#1e2228] hover:text-white flex items-center gap-2.5 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
               About
             </button>
           </div>
@@ -643,315 +561,125 @@
     </div>
   </header>
 
+  <!-- Update banner -->
   {#if updateAvailable}
-    <section class="mx-4 mt-3 rounded-md border border-[#AEB291]/40 bg-[#AEB291]/10 px-4 py-2.5 flex items-center justify-between">
-      <p class="text-xs text-zinc-300">
-        <span class="font-bold text-white">Update available</span> — v{latestVersion} is ready to download.
+    <div class="mx-3 mt-2 flex items-center justify-between rounded bg-[#AEB291]/6 border border-[#AEB291]/15 px-3 py-2">
+      <p class="text-xs text-zinc-400">
+        <span class="font-semibold text-white">v{latestVersion}</span> is available
       </p>
-      <div class="flex items-center gap-2 shrink-0">
-        <a
-          href={releaseUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="rounded-md bg-[#AEB291] px-3 py-1 text-xs font-bold text-[#171a1d] hover:bg-[#c5c9a5] transition-all"
-        >
-          Download
-        </a>
-        <button onclick={() => (updateAvailable = false)} class="text-zinc-500 hover:text-white text-xs">✕</button>
+      <div class="flex items-center gap-3 shrink-0">
+        <a href={releaseUrl} target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-[#AEB291] hover:text-white transition-colors">Download →</a>
+        <button onclick={() => (updateAvailable = false)} aria-label="Dismiss update notification" class="text-zinc-600 hover:text-zinc-400 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
-    </section>
+    </div>
   {/if}
 
+  <!-- macOS Accessibility banner -->
   {#if currentPlatform === "macos" && !macAccessibilityGranted}
-    <section
-      class="mx-4 mt-3 rounded-md border border-[#FF8A3D]/40 bg-[#FF8A3D]/10 px-4 py-3"
-    >
-      <div class="flex items-start justify-between gap-4">
+    <div class="mx-3 mt-2 rounded border border-[#FF8A3D]/20 bg-[#FF8A3D]/5 px-3 py-2.5">
+      <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
-          <p class="text-sm font-semibold text-white">
-            Enable Accessibility for direct paste
-          </p>
-          <p class="mt-1 text-xs leading-5 text-zinc-300">
-            The installed macOS app can copy history items, but direct paste
-            into other apps needs Accessibility permission for
-            <span class="font-semibold text-white"> /Applications/Ortu.app </span>.
-            Enable it in
-            <span class="font-semibold text-white">
-              Privacy &amp; Security → Accessibility
-            </span>.
+          <p class="text-xs font-semibold text-white">Accessibility permission needed</p>
+          <p class="mt-0.5 text-[11px] text-zinc-400 leading-relaxed">
+            Enable <span class="text-white font-medium">Ortu</span> in System Settings → Privacy & Security → Accessibility to paste directly.
           </p>
         </div>
-        <div class="flex shrink-0 items-center gap-2">
+        <div class="flex shrink-0 items-center gap-1.5 mt-0.5">
           <button
             onclick={refreshMacAccessibilityStatus}
-            class="rounded-md border border-[#333] bg-[#343a42] px-3 py-1.5 text-xs font-semibold text-zinc-100 transition-all hover:bg-[#2a3038]"
+            class="h-6 px-2.5 rounded border border-[#252a30] bg-[#1e2228] text-[11px] font-medium text-zinc-300 hover:text-white transition-colors"
             disabled={checkingMacAccessibility}
-          >
-            {checkingMacAccessibility ? "Checking..." : "Refresh"}
-          </button>
+          >{checkingMacAccessibility ? "..." : "Refresh"}</button>
           <button
             onclick={openMacAccessibilitySettings}
-            class="rounded-md border border-[#FF8A3D]/30 bg-[#FF8A3D] px-3 py-1.5 text-xs font-semibold text-[#171a1d] transition-all hover:bg-[#ff9a56]"
-          >
-            Open Settings
-          </button>
+            class="h-6 px-2.5 rounded bg-[#FF8A3D] text-[11px] font-semibold text-[#111214] hover:bg-[#f07d34] transition-colors"
+          >Open Settings</button>
         </div>
       </div>
-    </section>
+    </div>
   {/if}
 
   <div class="flex flex-1 overflow-hidden min-w-0">
-    <!-- Persistent Sidebar -->
-    <aside class="w-64 min-w-64 max-w-64 shrink-0 bg-[#171a1d] border-r border-[#333] flex flex-col">
-      <div class="p-4 border-b border-[#333]">
-        <span
-          class="text-[10px] font-bold uppercase tracking-widest text-zinc-500"
-          >Navigation</span
-        >
-      </div>
-      <!-- Fixed All History Button -->
-      <div class="p-2 border-b border-[#333]">
+
+    <!-- Sidebar -->
+    <aside class="w-52 shrink-0 flex flex-col border-r border-[#252a30] bg-[#0d1013]">
+
+      <!-- Nav -->
+      <nav class="p-2 space-y-0.5 pt-3">
         <button
-          class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
-          null
-            ? 'bg-[#AEB291]/18 text-[#AEB291] font-bold'
-            : 'text-zinc-400 hover:bg-[#343a42]'}"
-          onclick={() => {
-            selectedGroup = null;
-          }}
+          class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded text-[13px] transition-colors {selectedGroup === null ? 'bg-[#1e2228] text-white font-medium' : 'text-zinc-500 hover:text-zinc-200 hover:bg-[#17191c]'}"
+          onclick={() => { selectedGroup = null; }}
         >
-          <span class="flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              ><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
-              ></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg
-            >
-            All History
-          </span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="{selectedGroup === null ? 'text-[#FF8A3D]' : 'text-zinc-600'}">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          All History
         </button>
-      </div>
 
-      <!-- Static Smart Groups Section -->
-      <div class="p-2 border-b border-[#333] space-y-1">
-        <div class="pb-2 px-3">
-          <span
-            class="text-[10px] font-bold uppercase tracking-widest text-zinc-600"
-            >Smart Groups</span
-          >
-        </div>
+        <div class="h-px bg-[#1a1e24] my-2 mx-1"></div>
 
         <button
-          class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
-          'URL'
-            ? 'bg-[#AEB291]/18 text-[#AEB291] font-bold'
-            : 'text-zinc-400 hover:bg-[#343a42]'}"
+          class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded text-[13px] transition-colors {selectedGroup === 'URL' ? 'bg-[#1e2228] text-white font-medium' : 'text-zinc-500 hover:text-zinc-200 hover:bg-[#17191c]'}"
           onclick={() => (selectedGroup = "URL")}
         >
-          <span class="flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              ><circle cx="12" cy="12" r="10"></circle><line
-                x1="2"
-                y1="12"
-                x2="22"
-                y2="12"
-              ></line><path
-                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
-              ></path></svg
-            >
-            URLs
-          </span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="{selectedGroup === 'URL' ? 'text-[#AEB291]' : 'text-zinc-600'}">
+            <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+          URLs
         </button>
-
-        <!-- <button
-          class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
-          'Images'
-            ? 'bg-[#AEB291]/18 text-[#AEB291] font-bold'
-            : 'text-zinc-400 hover:bg-[#343a42]'}"
-          onclick={() => (selectedGroup = "Images")}
-        >
-          <span class="flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              ><rect x="3" y="3" width="18" height="18" rx="2" ry="2"
-              ></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline
-                points="21 15 16 10 5 21"
-              ></polyline></svg
-            >
-            Images
-          </span>
-        </button> -->
-
         <button
-          class="w-full text-left px-3 py-2 rounded-md text-sm transition-all {selectedGroup ===
-          'Text'
-            ? 'bg-[#AEB291]/18 text-[#AEB291] font-bold'
-            : 'text-zinc-400 hover:bg-[#343a42]'}"
+          class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded text-[13px] transition-colors {selectedGroup === 'Text' ? 'bg-[#1e2228] text-white font-medium' : 'text-zinc-500 hover:text-zinc-200 hover:bg-[#17191c]'}"
           onclick={() => (selectedGroup = "Text")}
         >
-          <span class="flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              ><path
-                d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
-              ></path><polyline points="14 2 14 8 20 8"></polyline><line
-                x1="16"
-                y1="13"
-                x2="8"
-                y2="13"
-              ></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline
-                points="10 9 9 9 8 9"
-              ></polyline></svg
-            >
-            Text
-          </span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="{selectedGroup === 'Text' ? 'text-[#AEB291]' : 'text-zinc-600'}">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          Text
+        </button>
+      </nav>
+
+      <!-- Groups header -->
+      <div class="flex items-center justify-between px-3 pt-3 pb-1.5 mt-1">
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Groups</span>
+        <button onclick={() => (isViewingGroups = true)} class="text-zinc-600 hover:text-[#AEB291] transition-colors" title="Manage groups">
+          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
       </div>
 
-      <!-- Groups Header -->
-      <div class="pt-4 pb-2 px-4 flex items-center justify-between">
-        <span class="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Groups</span>
-        <button
-          onclick={() => (isViewingGroups = true)}
-          class="text-zinc-600 hover:text-[#AEB291] transition-colors"
-          title="Manage groups"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        </button>
-      </div>
-
-      <!-- Scrollable Groups List -->
-      <div class="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-1">
+      <!-- Groups list -->
+      <div class="flex-1 overflow-y-auto custom-scrollbar px-2 pb-2 space-y-0.5">
         {#each groups as group}
-          <div
-            class="group relative flex items-center rounded-md hover:bg-[#343a42] transition-all {selectedGroup ===
-            group
-              ? 'bg-[#2a2f35]'
-              : ''}"
-          >
+          <div class="group/g relative flex items-center rounded transition-colors {selectedGroup === group ? 'bg-[#1e2228]' : 'hover:bg-[#17191c]'}">
             {#if editingGroup === group}
               <input
                 type="text"
                 bind:value={editGroupName}
-                class="flex-1 bg-transparent text-sm px-3 py-2 focus:outline-none text-white border-b border-[#AEB291]/45"
+                class="flex-1 bg-transparent text-[13px] px-2.5 py-1.5 focus:outline-none text-white border-b border-[#AEB291]/25"
                 onblur={renameGroup}
-                onkeydown={(e) => {
-                  if (e.key === "Enter") renameGroup();
-                  if (e.key === "Escape") editingGroup = null;
-                }}
+                onkeydown={(e) => { if (e.key === "Enter") renameGroup(); if (e.key === "Escape") editingGroup = null; }}
               />
             {:else}
               <button
-                class="flex-1 min-w-0 text-left px-3 py-2 text-sm truncate {selectedGroup ===
-                group
-                  ? 'text-[#AEB291] font-bold'
-                  : 'text-zinc-400'}"
+                class="flex-1 min-w-0 text-left px-2.5 py-1.5 text-[13px] truncate transition-colors {selectedGroup === group ? 'text-white font-medium' : 'text-zinc-500'}"
                 title={group}
-                onclick={() => {
-                  selectedGroup = group;
-                }}
+                onclick={() => { selectedGroup = group; }}
               >
                 <span class="block truncate">{group}</span>
               </button>
-              <div
-                class="flex opacity-0 group-hover:opacity-100 px-1 space-x-1"
-              >
+              <div class="flex opacity-0 group-hover/g:opacity-100 pr-1 gap-0.5 transition-opacity">
                 <button
-                  onclick={() => {
-                    editingGroup = group;
-                    editGroupName = group;
-                  }}
-                  class="p-1 hover:text-white"
-                  title="Rename"
+                  onclick={() => { editingGroup = group; editGroupName = group; }}
+                  class="p-1 text-zinc-600 hover:text-zinc-200 rounded transition-colors" title="Rename"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    ><path
-                      d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
-                    /><path
-                      d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
-                    /></svg
-                  >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </button>
-                <button
-                  onclick={() => exportGroup(group)}
-                  class="p-1 hover:text-white"
-                  title="Export"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    ><path
-                      d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
-                    /><polyline points="7 10 12 15 17 10" /><line
-                      x1="12"
-                      y1="15"
-                      x2="12"
-                      y2="3"
-                    /></svg
-                  >
+                <button onclick={() => exportGroup(group)} class="p-1 text-zinc-600 hover:text-zinc-200 rounded transition-colors" title="Export">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 </button>
-                <button
-                  onclick={() => deleteGroup(group)}
-                  class="p-1 hover:text-[#FF8A3D]"
-                  title="Delete"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    ><path d="M3 6h18"></path><path
-                      d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
-                    ></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
-                    ></path></svg
-                  >
+                <button onclick={() => deleteGroup(group)} class="p-1 text-zinc-600 hover:text-[#FF8A3D] rounded transition-colors" title="Delete">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                 </button>
               </div>
             {/if}
@@ -960,299 +688,138 @@
       </div>
     </aside>
 
-    <!-- Main Content Area -->
-    <main class="flex-1 min-w-0 flex flex-col bg-[#171a1d]">
-      <!-- Search & Filter Area -->
-      <div class="p-4 border-b border-[#333] flex items-center space-x-4">
+    <!-- Main content -->
+    <main class="flex-1 min-w-0 flex flex-col bg-[#111214]">
+
+      <!-- Search -->
+      <div class="px-3 py-2.5 border-b border-[#252a30] flex items-center gap-2.5">
         <div class="flex-1 relative">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600"
-            ><circle cx="11" cy="11" r="8"></circle><line
-              x1="21"
-              y1="21"
-              x2="16.65"
-              y2="16.65"
-            ></line></svg
-          >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
           <input
             type="text"
             bind:this={searchInput}
             bind:value={searchQuery}
-            placeholder={selectedGroup
-              ? `Search in ${selectedGroup}...`
-              : "Search all clips..."}
-            class="w-full bg-[#171a1d] border border-[#333] rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all placeholder:text-zinc-600 font-medium"
+            placeholder={selectedGroup ? `Search in ${selectedGroup}...` : "Search clips..."}
+            class="w-full bg-[#17191c] border border-[#252a30] rounded pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/30 transition-colors placeholder:text-zinc-600"
           />
         </div>
         {#if selectedGroup}
-          <div
-            class="flex items-center bg-[#AEB291]/18 border border-[#AEB291]/35 rounded-md py-1.5 px-3"
-          >
-            <span
-              class="text-[10px] font-bold text-[#FF8A3D] uppercase tracking-widest"
-              >{selectedGroup}</span
-            >
-            <button
-              onclick={() => (selectedGroup = null)}
-              class="ml-2 text-[#FF8A3D]/60 hover:text-[#FF8A3D]"
-              aria-label="Clear selected group"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                ><line x1="18" y1="6" x2="6" y2="18"></line><line
-                  x1="6"
-                  y1="6"
-                  x2="18"
-                  y2="18"
-                ></line></svg
-              >
+          <div class="flex items-center gap-1.5 shrink-0 bg-[#1e2228] rounded px-2 py-1.5 border border-[#AEB291]/12">
+            <span class="text-[11px] font-medium text-[#AEB291]">{selectedGroup}</span>
+            <button onclick={() => (selectedGroup = null)} class="text-zinc-600 hover:text-zinc-300 transition-colors" aria-label="Clear selected group">
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
         {/if}
       </div>
 
-      <!-- History List -->
-      <div
-        class="flex-1 overflow-y-auto custom-scrollbar p-4"
-        bind:this={container}
-      >
-        <div class="grid gap-2">
+      <!-- History list -->
+      <div class="flex-1 overflow-y-auto custom-scrollbar p-3" bind:this={container}>
+        <div class="space-y-1.5">
           {#each history as item, i (item.id)}
             <div
-              class="w-full p-4 rounded-xl border border-[#333] bg-[#171a1d] hover:bg-[#2a2f35] transition-all group flex flex-col space-y-3 cursor-default overflow-hidden
-                            {i === selectedIndex
-                ? 'ring-2 ring-[#AEB291]/45 bg-[#2a2f35]'
-                : ''}"
-              onclick={() => {
-                selectedIndex = i;
-              }}
-              onkeydown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  selectedIndex = i;
-                }
-              }}
+              class="group/card p-3 rounded border transition-all cursor-default
+                {i === selectedIndex
+                  ? 'bg-[#1e2228] border-[#AEB291]/18'
+                  : 'bg-[#17191c] border-[#252a30] hover:bg-[#1a1d22] hover:border-[#2f3540]'}"
+              onclick={() => { selectedIndex = i; }}
+              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectedIndex = i; } }}
               role="button"
               tabindex="0"
               data-index={i}
             >
-              <div class="flex items-start justify-between gap-3 min-w-0">
+              <div class="flex items-start gap-2 min-w-0">
                 <div class="min-w-0 flex-1">
                   {#if item.description}
-                    <p class="text-[11px] font-semibold text-[#AEB291] mb-1 truncate">{item.description}</p>
+                    <p class="text-[11px] font-medium text-[#AEB291] mb-1 truncate">{item.description}</p>
                   {/if}
-                  <div class="relative">
-                    <p
-                      class="text-[13px] text-zinc-100 font-normal leading-relaxed break-all whitespace-pre-wrap max-w-full {expandedItems.includes(
-                        item.id
-                      )
-                        ? ''
-                        : 'line-clamp-4'}"
-                    >
-                      {clipPreview(item.raw_content, item.content_type)}
-                    </p>
-                    {#if item.raw_content.split("\n").length > 4 || item.raw_content.length > 300}
-                      <button
-                        onclick={(e) => {
-                          e.stopPropagation();
-                          if (expandedItems.includes(item.id)) {
-                            expandedItems = expandedItems.filter(
-                              (id) => id !== item.id
-                            );
-                          } else {
-                            expandedItems = [...expandedItems, item.id];
-                          }
-                        }}
-                        class="text-[10px] font-bold text-[#FF8A3D]/85 hover:text-[#FF8A3D] mt-1 uppercase tracking-widest"
-                      >
-                        {expandedItems.includes(item.id)
-                          ? "Collapse"
-                          : "Expand"}
-                      </button>
-                    {/if}
-                  </div>
+                  <p class="text-[13px] text-zinc-200 leading-relaxed break-all whitespace-pre-wrap {expandedItems.includes(item.id) ? '' : 'line-clamp-3'}">
+                    {clipPreview(item.raw_content, item.content_type)}
+                  </p>
+                  {#if item.raw_content.split('\n').length > 3 || item.raw_content.length > 250}
+                    <button
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        if (expandedItems.includes(item.id)) {
+                          expandedItems = expandedItems.filter(id => id !== item.id);
+                        } else {
+                          expandedItems = [...expandedItems, item.id];
+                        }
+                      }}
+                      class="text-[10px] text-zinc-600 hover:text-zinc-400 mt-0.5 transition-colors"
+                    >{expandedItems.includes(item.id) ? 'Show less' : 'Show more'}</button>
+                  {/if}
                 </div>
-                <div class="flex items-center space-x-1 ml-2 self-start shrink-0">
+                <!-- Actions: visible on hover + selected -->
+                <div class="flex items-center gap-0.5 shrink-0 self-start mt-0.5 transition-opacity {i === selectedIndex ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100'}">
                   <button
-                    class="p-2 rounded-lg hover:bg-[#2a3038] transition-colors {item.is_permanent
-                      ? 'text-amber-500'
-                      : 'text-zinc-600'}"
-                    onclick={(e) => {
-                      e.stopPropagation();
-                      togglePermanent(item);
-                    }}
-                    title="Pin Item"
+                    class="p-1.5 rounded transition-colors hover:bg-[#252a30] {item.is_permanent ? 'text-amber-400' : 'text-zinc-600 hover:text-zinc-200'}"
+                    onclick={(e) => { e.stopPropagation(); togglePermanent(item); }}
+                    title="Pin"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill={item.is_permanent ? "currentColor" : "none"}
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <line x1="12" y1="17" x2="12" y2="22"></line>
-                      <path
-                        d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"
-                      ></path>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill={item.is_permanent ? "currentColor" : "none"} stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
                     </svg>
                   </button>
                   <button
-                    class="p-2 rounded-lg hover:bg-[#2a3038] hover:text-[#FF8A3D] transition-colors text-zinc-600"
-                    onclick={(e) => {
-                      e.stopPropagation();
-                      categorizingItemId = item.id;
-                      newGroupName = "";
-                      isCategorizing = true;
-                    }}
-                    title="Add to Group"
+                    class="p-1.5 rounded text-zinc-600 hover:text-zinc-200 hover:bg-[#252a30] transition-colors"
+                    onclick={(e) => { e.stopPropagation(); categorizingItemId = item.id; newGroupName = ""; isCategorizing = true; }}
+                    title="Add to group"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path
-                        d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                      ></path>
-                      <line x1="12" y1="11" x2="12" y2="17"></line>
-                      <line x1="9" y1="14" x2="15" y2="14"></line>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
                     </svg>
                   </button>
                   <button
-                    class="p-2 rounded-lg hover:bg-[#AEB291]/18 hover:text-[#FF8A3D] transition-colors text-zinc-600"
-                    onclick={(e) => {
-                      e.stopPropagation();
-                      deleteItem(item);
-                    }}
-                    title="Delete Item"
+                    class="p-1.5 rounded text-zinc-600 hover:text-[#FF8A3D] hover:bg-[#252a30] transition-colors"
+                    onclick={(e) => { e.stopPropagation(); deleteItem(item); }}
+                    title="Delete"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      ><path d="M3 6h18"></path><path
-                        d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
-                      ></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
-                      ></path></svg
-                    >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                    </svg>
                   </button>
                 </div>
               </div>
 
-              <div
-                class="flex items-center justify-between border-t border-[#333]/50 pt-3"
-              >
-                <div class="flex items-center space-x-3">
-                  <!-- Icon -->
-                  <div
-                    class="w-4 h-4 flex items-center justify-center text-zinc-500"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
+              <!-- Meta row -->
+              <div class="flex items-center justify-between mt-2 pt-2 border-t border-[#1e2228]/60">
+                <div class="flex items-center gap-1.5 flex-wrap min-w-0">
+                  <div class="w-3.5 h-3.5 flex items-center justify-center text-zinc-600 shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       {@html getCategoryIcon(item.category)}
                     </svg>
                   </div>
                   {#if item.groups && item.groups.length > 0}
-                    {#each item.groups as group}
-                      <div
-                        class="flex items-center gap-1 text-[9px] font-bold uppercase py-0.5 px-2 bg-[#AEB291]/18 text-[#FF8A3D] rounded-full border border-[#AEB291]/35"
-                      >
-                        <button
-                          class=""
-                          onclick={(e) => {
-                            e.stopPropagation();
-                            selectedGroup = group;
-                          }}
-                        >
-                          {group}
-                        </button>
-                        {#if selectedGroup === group}
-                          <button
-                            onclick={(e) => {
-                              e.stopPropagation();
-                              removeFromGroup(item, group);
-                            }}
-                            class="hover:text-white ml-1 px-1 rounded-full hover:bg-red-500/20"
-                            title="Remove from group"
-                          >
-                            ×
-                          </button>
+                    {#each item.groups as grp}
+                      <div class="flex items-center gap-0.5 text-[9px] font-medium uppercase py-0.5 px-1.5 bg-[#1e2228] text-[#AEB291] rounded border border-[#AEB291]/10">
+                        <button onclick={(e) => { e.stopPropagation(); selectedGroup = grp; }}>{grp}</button>
+                        {#if selectedGroup === grp}
+                          <button onclick={(e) => { e.stopPropagation(); removeFromGroup(item, grp); }} class="hover:text-white ml-0.5 hover:bg-red-500/15 rounded-full px-0.5" title="Remove from group">×</button>
                         {/if}
                       </div>
                     {/each}
                   {:else if item.category}
                     <button
-                      class="text-[9px] font-bold uppercase py-0.5 px-2 bg-[#AEB291]/18 text-[#FF8A3D] rounded-full border border-[#AEB291]/35"
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        selectedGroup = item.category;
-                      }}
-                    >
-                      {item.category}
-                    </button>
+                      class="text-[9px] font-medium uppercase py-0.5 px-1.5 bg-[#1e2228] text-[#AEB291] rounded border border-[#AEB291]/10 hover:border-[#AEB291]/22 transition-colors"
+                      onclick={(e) => { e.stopPropagation(); selectedGroup = item.category; }}
+                    >{item.category}</button>
                   {/if}
                   {#if item.is_manual}
-                    <span class="text-[9px] font-bold uppercase px-1.5 py-0.5 bg-[#FF8A3D]/15 text-[#FF8A3D]/80 rounded border border-[#FF8A3D]/25">manual</span>
+                    <span class="text-[9px] font-medium px-1.5 py-0.5 bg-[#FF8A3D]/8 text-[#FF8A3D]/60 rounded border border-[#FF8A3D]/10">manual</span>
                   {/if}
-                  <span class="text-[10px] text-zinc-600 font-medium">
-                    {new Date(item.created_at).toLocaleString([], {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
+                  <span class="text-[10px] text-zinc-600">
+                    {new Date(item.created_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
                   </span>
                 </div>
                 <button
-                  class="text-[10px] font-bold text-zinc-500 hover:text-[#FF8A3D] uppercase tracking-widest flex items-center space-x-1"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    copyAndPaste(item);
-                  }}
+                  class="text-[10px] font-medium text-zinc-600 hover:text-[#FF8A3D] transition-colors flex items-center gap-0.5 shrink-0 ml-2"
+                  onclick={(e) => { e.stopPropagation(); copyAndPaste(item); }}
                 >
-                  <span>Copy</span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                    ><polyline points="9 18 15 12 9 6"></polyline></svg
-                  >
+                  Copy
+                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>
               </div>
             </div>
@@ -1260,29 +827,15 @@
         </div>
 
         {#if history.length === 0}
-          <div
-            class="flex flex-col items-center justify-center h-full py-20 text-center"
-          >
-            <div
-              class="w-16 h-16 bg-[#171a1d] rounded-2xl flex items-center justify-center mb-4 text-zinc-700"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="32"
-                height="32"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                ><rect x="9" y="9" width="13" height="13" rx="2" ry="2"
-                ></rect><path
-                  d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-                ></path></svg
-              >
+          <div class="flex flex-col items-center justify-center h-full py-16 text-center">
+            <div class="w-12 h-12 rounded bg-[#17191c] flex items-center justify-center mb-3 text-zinc-700">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
             </div>
-            <h3 class="text-zinc-400 font-bold">No clips found</h3>
-            <p class="text-zinc-600 text-xs mt-1">
-              Copy something to see it here
+            <p class="text-sm font-medium text-zinc-500">No clips found</p>
+            <p class="text-xs text-zinc-700 mt-0.5">
+              {selectedGroup ? `Nothing in "${selectedGroup}"` : "Copy something to see it here"}
             </p>
           </div>
         {/if}
@@ -1292,64 +845,25 @@
 
   <!-- Export Modal -->
   {#if showExportModal}
-    <div
-      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-    >
-      <div
-        class="w-full max-w-sm bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden p-6 animate-in zoom-in-95 duration-200"
-      >
-        <h3 class="text-sm font-bold text-white mb-4">Export Data</h3>
-
-        <div
-          class="max-h-60 overflow-y-auto mb-4 border border-[#333] rounded-lg p-2"
-        >
-          <label
-            class="flex items-center space-x-2 text-xs text-zinc-400 p-2 hover:bg-[#343a42] rounded cursor-pointer"
-          >
-            <input
-              type="checkbox"
-              checked={exportSelectedGroups.length === 0}
-              onchange={() => (exportSelectedGroups = [])}
-              class="rounded border-zinc-600 bg-[#343a42] text-[#FF8A3D] focus:ring-[#AEB291]/55"
-            />
-            <span class="font-bold">All Data</span>
+    <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="w-full max-w-sm bg-[#17191c] border border-[#252a30] rounded shadow-2xl p-5">
+        <h3 class="text-sm font-semibold text-white mb-4">Export Data</h3>
+        <div class="max-h-52 overflow-y-auto mb-4 border border-[#252a30] rounded p-1.5 space-y-0.5">
+          <label class="flex items-center gap-2.5 text-xs text-zinc-400 p-2 hover:bg-[#1e2228] rounded cursor-pointer">
+            <input type="checkbox" checked={exportSelectedGroups.length === 0} onchange={() => (exportSelectedGroups = [])} class="rounded border-zinc-600 bg-[#1e2228] text-[#FF8A3D]" />
+            <span class="font-medium">All Data</span>
           </label>
-          <div class="h-px bg-[#333] my-1"></div>
+          <div class="h-px bg-[#252a30]"></div>
           {#each groups as group}
-            <label
-              class="flex items-center space-x-2 text-xs text-zinc-400 p-2 hover:bg-[#343a42] rounded cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                checked={exportSelectedGroups.includes(group)}
-                onchange={(e) => {
-                  if (e.currentTarget.checked) {
-                    exportSelectedGroups = [...exportSelectedGroups, group];
-                  } else {
-                    exportSelectedGroups = exportSelectedGroups.filter(
-                      (g) => g !== group
-                    );
-                  }
-                }}
-                class="rounded border-zinc-600 bg-[#343a42] text-[#FF8A3D] focus:ring-[#AEB291]/55"
-              />
+            <label class="flex items-center gap-2.5 text-xs text-zinc-400 p-2 hover:bg-[#1e2228] rounded cursor-pointer">
+              <input type="checkbox" checked={exportSelectedGroups.includes(group)} onchange={(e) => { if (e.currentTarget.checked) { exportSelectedGroups = [...exportSelectedGroups, group]; } else { exportSelectedGroups = exportSelectedGroups.filter(g => g !== group); } }} class="rounded border-zinc-600 bg-[#1e2228] text-[#FF8A3D]" />
               <span>{group}</span>
             </label>
           {/each}
         </div>
-
-        <div class="flex justify-end space-x-3">
-          <button
-            class="px-4 py-2 text-xs text-zinc-500 font-bold hover:text-white transition-colors"
-            onclick={() => (showExportModal = false)}>Cancel</button
-          >
-          <button
-            class="px-6 py-2 bg-[#FF8A3D] text-white rounded-xl text-xs font-bold shadow-lg shadow-[#FF8A3D]/25 hover:bg-[#e67d36] transition-all"
-            onclick={performExport}
-            disabled={processingIO}
-          >
-            {processingIO ? "Exporting..." : "Export"}
-          </button>
+        <div class="flex justify-end gap-2">
+          <button class="h-8 px-3 text-xs text-zinc-500 hover:text-white transition-colors" onclick={() => (showExportModal = false)}>Cancel</button>
+          <button class="h-8 px-4 bg-[#FF8A3D] text-[#111214] rounded text-xs font-semibold hover:bg-[#f07d34] transition-colors disabled:opacity-40" onclick={performExport} disabled={processingIO}>{processingIO ? "Exporting..." : "Export"}</button>
         </div>
       </div>
     </div>
@@ -1357,70 +871,28 @@
 
   <!-- Import Modal -->
   {#if showImportModal}
-    <div
-      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-    >
-      <div
-        class="w-full max-w-sm bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden p-6 animate-in zoom-in-95 duration-200"
-      >
-        <h3 class="text-sm font-bold text-white mb-4">Import Data</h3>
-
-        <div class="mb-6 space-y-3">
-          <label
-            class="flex items-center space-x-3 p-3 border border-[#333] rounded-xl cursor-pointer hover:bg-[#343a42] transition-colors {importMode ===
-            'merge'
-              ? 'bg-[#343a42] border-[#AEB291]/45'
-              : ''}"
-          >
-            <input
-              type="radio"
-              name="importMode"
-              value="merge"
-              bind:group={importMode}
-              class="text-[#FF8A3D] focus:ring-[#AEB291]/55 bg-[#171a1d] border-zinc-600"
-            />
+    <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="w-full max-w-sm bg-[#17191c] border border-[#252a30] rounded shadow-2xl p-5">
+        <h3 class="text-sm font-semibold text-white mb-4">Import Data</h3>
+        <div class="space-y-2 mb-5">
+          <label class="flex items-center gap-3 p-3 border rounded cursor-pointer transition-colors {importMode === 'merge' ? 'border-[#AEB291]/25 bg-[#1e2228]' : 'border-[#252a30] hover:bg-[#1e2228]'}">
+            <input type="radio" name="importMode" value="merge" bind:group={importMode} class="text-[#FF8A3D]" />
             <div>
-              <div class="text-white text-xs font-bold">Merge</div>
-              <div class="text-[10px] text-zinc-500">
-                Combine with existing data
-              </div>
+              <div class="text-white text-xs font-semibold">Merge</div>
+              <div class="text-[10px] text-zinc-500 mt-0.5">Combine with existing data</div>
             </div>
           </label>
-
-          <label
-            class="flex items-center space-x-3 p-3 border border-[#333] rounded-xl cursor-pointer hover:bg-[#343a42] transition-colors {importMode ===
-            'replace'
-              ? 'bg-[#343a42] border-[#AEB291]/45'
-              : ''}"
-          >
-            <input
-              type="radio"
-              name="importMode"
-              value="replace"
-              bind:group={importMode}
-              class="text-[#FF8A3D] focus:ring-[#AEB291]/55 bg-[#171a1d] border-zinc-600"
-            />
+          <label class="flex items-center gap-3 p-3 border rounded cursor-pointer transition-colors {importMode === 'replace' ? 'border-[#AEB291]/25 bg-[#1e2228]' : 'border-[#252a30] hover:bg-[#1e2228]'}">
+            <input type="radio" name="importMode" value="replace" bind:group={importMode} class="text-[#FF8A3D]" />
             <div>
-              <div class="text-white text-xs font-bold">Replace</div>
-              <div class="text-[10px] text-zinc-500">
-                Overwrite all existing data
-              </div>
+              <div class="text-white text-xs font-semibold">Replace</div>
+              <div class="text-[10px] text-zinc-500 mt-0.5">Overwrite all existing data</div>
             </div>
           </label>
         </div>
-
-        <div class="flex justify-end space-x-3">
-          <button
-            class="px-4 py-2 text-xs text-zinc-500 font-bold hover:text-white transition-colors"
-            onclick={() => (showImportModal = false)}>Cancel</button
-          >
-          <button
-            class="px-6 py-2 bg-[#FF8A3D] text-white rounded-xl text-xs font-bold shadow-lg shadow-[#FF8A3D]/25 hover:bg-[#e67d36] transition-all"
-            onclick={performImport}
-            disabled={processingIO}
-          >
-            {processingIO ? "Importing..." : "Select File"}
-          </button>
+        <div class="flex justify-end gap-2">
+          <button class="h-8 px-3 text-xs text-zinc-500 hover:text-white transition-colors" onclick={() => (showImportModal = false)}>Cancel</button>
+          <button class="h-8 px-4 bg-[#FF8A3D] text-[#111214] rounded text-xs font-semibold hover:bg-[#f07d34] transition-colors disabled:opacity-40" onclick={performImport} disabled={processingIO}>{processingIO ? "Importing..." : "Select File"}</button>
         </div>
       </div>
     </div>
@@ -1428,199 +900,69 @@
 
   <!-- Manage Groups Modal -->
   {#if isViewingGroups}
-    <div
-      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-    >
-      <div
-        class="w-full max-w-2xl bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200"
-      >
-        <div
-          class="px-6 py-4 border-b border-[#333] flex justify-between items-center bg-[#171a1d]"
-        >
+    <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="w-full max-w-lg bg-[#17191c] border border-[#252a30] rounded shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+        <div class="px-5 py-4 border-b border-[#252a30] flex justify-between items-center">
           <div>
-            <h2 class="text-lg font-bold text-white">Manage Groups</h2>
-            <p class="text-xs text-zinc-500">Create and organize your clips</p>
+            <h2 class="text-sm font-semibold text-white">Manage Groups</h2>
+            <p class="text-[11px] text-zinc-500 mt-0.5">Create and organize your clips</p>
           </div>
-          <button
-            onclick={() => (isViewingGroups = false)}
-            class="text-zinc-500 hover:text-white"
-            aria-label="Close manage groups dialog"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              ><line x1="18" y1="6" x2="6" y2="18"></line><line
-                x1="6"
-                y1="6"
-                x2="18"
-                y2="18"
-              ></line></svg
-            >
+          <button onclick={() => (isViewingGroups = false)} class="text-zinc-500 hover:text-white transition-colors" aria-label="Close manage groups dialog">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
-
-        <div class="p-6 border-b border-[#333] bg-[#171a1d]">
-          <div class="flex items-center space-x-3">
+        <div class="p-5 border-b border-[#252a30]">
+          <div class="flex items-center gap-2">
             <input
               type="text"
               bind:value={newGroupName}
               placeholder="New group name..."
-              class="flex-1 bg-[#2a2f35] border border-[#333] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium"
-              onkeydown={(e) => {
-                if (e.key === "Enter") createGroup();
-              }}
+              class="flex-1 bg-[#1e2228] border border-[#252a30] rounded px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/30 transition-colors placeholder:text-zinc-600"
+              onkeydown={(e) => { if (e.key === "Enter") createGroup(); }}
             />
-            <button
-              onclick={createGroup}
-              class="px-6 py-2.5 bg-[#AEB291] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#AEB291]/25 hover:bg-[#4d514a] transition-all"
-            >
-              Create Group
+            <button onclick={createGroup} class="h-9 px-4 bg-[#AEB291] hover:bg-[#9ea382] text-[#111214] rounded text-xs font-semibold transition-colors">
+              Create
             </button>
           </div>
         </div>
-
-        <div class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3">
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-1.5">
           {#each groups as group}
-            <div
-              class="flex items-center justify-between p-4 bg-[#2a2f35] rounded-xl border border-transparent hover:border-[#333] transition-all group"
-            >
-              <div class="flex items-center space-x-4 flex-1">
-                <div
-                  class="w-10 h-10 rounded-lg bg-[#171a1d] flex items-center justify-center text-[#FF8A3D]/75"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    ><path
-                      d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                    ></path></svg
-                  >
+            <div class="flex items-center justify-between p-3 bg-[#1e2228] rounded border border-transparent hover:border-[#252a30] transition-all group/mg">
+              <div class="flex items-center gap-3 flex-1 min-w-0">
+                <div class="w-8 h-8 rounded bg-[#17191c] flex items-center justify-center text-[#FF8A3D]/50 shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                 </div>
                 {#if editingGroup === group}
                   <input
                     type="text"
                     bind:value={editGroupName}
-                    class="flex-1 bg-[#171a1d] text-sm px-3 py-1.5 rounded-lg focus:outline-none text-white border border-[#AEB291]/45"
+                    class="flex-1 bg-[#17191c] text-sm px-2.5 py-1.5 rounded focus:outline-none text-white border border-[#AEB291]/25"
                     onblur={renameGroup}
-                    onkeydown={(e) => {
-                      if (e.key === "Enter") renameGroup();
-                      if (e.key === "Escape") editingGroup = null;
-                    }}
+                    onkeydown={(e) => { if (e.key === "Enter") renameGroup(); if (e.key === "Escape") editingGroup = null; }}
                   />
                 {:else}
-                  <div>
-                    <h3 class="text-sm font-bold text-white">{group}</h3>
-                    <p
-                      class="text-[10px] text-zinc-500 font-medium uppercase tracking-widest mt-0.5"
-                    >
-                      User Created Group
-                    </p>
-                  </div>
+                  <span class="text-sm font-medium text-white truncate">{group}</span>
                 {/if}
               </div>
-
-              <div class="flex items-center space-x-2">
-                <button
-                  onclick={() => {
-                    editingGroup = group;
-                    editGroupName = group;
-                  }}
-                  class="p-2 text-zinc-500 hover:text-white hover:bg-[#2a3038] rounded-lg transition-all"
-                  title="Rename"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    ><path
-                      d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
-                    /><path
-                      d="M18.5 2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
-                    /></svg
-                  >
+              <div class="flex items-center gap-1">
+                <button onclick={() => { editingGroup = group; editGroupName = group; }} class="p-1.5 text-zinc-600 hover:text-white hover:bg-[#252a30] rounded transition-colors" title="Rename">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </button>
-                <button
-                  onclick={() => exportGroup(group)}
-                  class="p-2 text-zinc-500 hover:text-white hover:bg-[#2a3038] rounded-lg transition-all"
-                  title="Export Group to .TXT"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    ><path
-                      d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
-                    /><polyline points="7 10 12 15 17 10" /><line
-                      x1="12"
-                      y1="15"
-                      x2="12"
-                      y2="3"
-                    /></svg
-                  >
+                <button onclick={() => exportGroup(group)} class="p-1.5 text-zinc-600 hover:text-white hover:bg-[#252a30] rounded transition-colors" title="Export">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 </button>
-                <button
-                  onclick={() => deleteGroup(group)}
-                  class="p-2 text-zinc-500 hover:text-[#FF8A3D] hover:bg-[#AEB291]/18 rounded-lg transition-all"
-                  title="Delete Group"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    ><path d="M3 6h18"></path><path
-                      d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
-                    ></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
-                    ></path></svg
-                  >
+                <button onclick={() => deleteGroup(group)} class="p-1.5 text-zinc-600 hover:text-[#FF8A3D] hover:bg-[#252a30] rounded transition-colors" title="Delete">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                 </button>
               </div>
             </div>
           {:else}
-            <div
-              class="flex flex-col items-center justify-center py-12 text-center"
-            >
-              <div
-                class="w-16 h-16 bg-[#2a2f35] rounded-2xl flex items-center justify-center mb-4 text-zinc-700"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="32"
-                  height="32"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  ><path
-                    d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                  ></path></svg
-                >
+            <div class="flex flex-col items-center justify-center py-10 text-center">
+              <div class="w-12 h-12 bg-[#1e2228] rounded flex items-center justify-center mb-3 text-zinc-700">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
               </div>
-              <h3 class="text-zinc-400 font-bold">No custom groups</h3>
-              <p class="text-zinc-600 text-xs mt-1">
-                Create your first group above to organize your clips
-              </p>
+              <p class="text-sm font-medium text-zinc-500">No groups yet</p>
+              <p class="text-xs text-zinc-700 mt-0.5">Create your first group above</p>
             </div>
           {/each}
         </div>
@@ -1628,99 +970,47 @@
     </div>
   {/if}
 
-  <!-- Move to Group Popup (Absolute) -->
-  <!-- Move to Group Popup (Absolute) -->
+  <!-- Move to Group popup -->
   {#if isCategorizing}
-    <div
-      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-    >
-      <div
-        class="w-full max-w-[280px] bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in zoom-in-95 duration-200"
-      >
-        <div
-          class="px-4 py-3 border-b border-[#333] flex justify-between items-center bg-[#171a1d]"
-        >
-          <span
-            class="text-[10px] font-bold uppercase tracking-widest text-zinc-500"
-            >Save to Group</span
-          >
-          <button
-            onclick={() => (isCategorizing = false)}
-            class="text-zinc-500 hover:text-white">✕</button
-          >
+    <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="w-full max-w-[260px] bg-[#17191c] border border-[#252a30] rounded shadow-2xl overflow-hidden flex flex-col max-h-[70vh]">
+        <div class="px-3 py-2.5 border-b border-[#252a30] flex justify-between items-center">
+          <span class="text-[11px] font-semibold text-zinc-400">Save to Group</span>
+          <button onclick={() => (isCategorizing = false)} aria-label="Close" class="text-zinc-600 hover:text-white transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
-
-        <div class="p-2 border-b border-[#333] bg-[#171a1d]">
+        <div class="p-2 border-b border-[#252a30]">
           <input
             type="text"
             bind:value={newGroupName}
-            placeholder="New or search group..."
-            class="w-full bg-[#2a2f35] border border-[#333] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium"
-            onkeydown={(e) => {
-              if (e.key === "Enter") moveItemToGroup();
-              if (e.key === "Escape") isCategorizing = false;
-            }}
+            placeholder="Type or search group..."
+            class="w-full bg-[#1e2228] border border-[#252a30] rounded px-3 py-1.5 text-xs focus:outline-none focus:border-[#AEB291]/30 transition-colors placeholder:text-zinc-600"
+            onkeydown={(e) => { if (e.key === "Enter") moveItemToGroup(); if (e.key === "Escape") isCategorizing = false; }}
           />
         </div>
-
-        <div class="flex-1 overflow-y-auto custom-scrollbar p-1">
-          {#each groups.filter((g) => g
-              .toLowerCase()
-              .includes(newGroupName.toLowerCase())) as group}
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-1.5 space-y-0.5">
+          {#each groups.filter(g => g.toLowerCase().includes(newGroupName.toLowerCase())) as group}
             <button
-              onclick={() => {
-                newGroupName = group;
-                moveItemToGroup();
-              }}
-              class="w-full text-left px-3 py-2 text-xs hover:bg-[#343a42] rounded-lg transition-all flex items-center space-x-2 text-zinc-400 hover:text-white"
+              onclick={() => { newGroupName = group; moveItemToGroup(); }}
+              class="w-full text-left px-3 py-2 text-xs hover:bg-[#1e2228] rounded transition-colors flex items-center gap-2 text-zinc-400 hover:text-white"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                class="text-[#FF8A3D]/60"
-                ><path
-                  d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                ></path></svg
-              >
-              <span>{group}</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[#FF8A3D]/50 shrink-0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              {group}
             </button>
           {/each}
           {#if newGroupName && !groups.includes(newGroupName)}
             <button
               onclick={moveItemToGroup}
-              class="w-full text-left px-3 py-2 text-xs hover:bg-[#AEB291]/18 rounded-lg transition-all flex items-center space-x-2 text-[#FF8A3D]"
+              class="w-full text-left px-3 py-2 text-xs hover:bg-[#FF8A3D]/8 rounded transition-colors flex items-center gap-2 text-[#FF8A3D]"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="3"
-                ><line x1="12" y1="5" x2="12" y2="19"></line><line
-                  x1="5"
-                  y1="12"
-                  x2="19"
-                  y2="12"
-                ></line></svg
-              >
-              <span>Create "{newGroupName}"</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Create "{newGroupName}"
             </button>
           {/if}
         </div>
-
-        <div class="p-2 border-t border-[#333] bg-[#171a1d] flex justify-end">
-          <button
-            onclick={moveItemToGroup}
-            class="px-4 py-1.5 bg-[#AEB291] text-white rounded-lg text-xs font-bold hover:bg-[#4d514a] transition-all"
-            disabled={!newGroupName.trim()}
-          >
+        <div class="p-2 border-t border-[#252a30] flex justify-end">
+          <button onclick={moveItemToGroup} class="h-7 px-4 bg-[#AEB291] hover:bg-[#9ea382] text-[#111214] rounded text-xs font-semibold transition-colors disabled:opacity-40" disabled={!newGroupName.trim()}>
             Save
           </button>
         </div>
@@ -1731,268 +1021,98 @@
   <!-- Help Modal -->
   {#if showHelpModal}
     <div
-      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onclick={(e) => {
-        if (e.target === e.currentTarget) showHelpModal = false;
-      }}
-      onkeydown={(e) => {
-        if (e.key === "Escape") showHelpModal = false;
-      }}
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
+      class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onclick={(e) => { if (e.target === e.currentTarget) showHelpModal = false; }}
+      onkeydown={(e) => { if (e.key === "Escape") showHelpModal = false; }}
+      role="dialog" aria-modal="true" tabindex="-1"
     >
-      <div
-        class="w-full max-w-2xl bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
-      >
-        <div
-          class="p-6 border-b border-[#333] flex items-center justify-between"
-        >
-          <div class="flex items-center gap-3">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              class="text-[#FF8A3D]"
-              ><circle cx="12" cy="12" r="10"></circle><path
-                d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"
-              ></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg
-            >
-            <h3 class="text-lg font-bold text-white">Help & Shortcuts</h3>
-          </div>
-          <button
-            onclick={() => (showHelpModal = false)}
-            class="text-zinc-500 hover:text-white transition-colors"
-            aria-label="Close help dialog"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              ><line x1="18" y1="6" x2="6" y2="18"></line><line
-                x1="6"
-                y1="6"
-                x2="18"
-                y2="18"
-              ></line></svg
-            >
+      <div class="w-full max-w-xl bg-[#17191c] border border-[#252a30] rounded shadow-2xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-[#252a30] flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-white">Help & Shortcuts</h3>
+          <button onclick={() => (showHelpModal = false)} class="text-zinc-500 hover:text-white transition-colors" aria-label="Close help dialog">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
-
-        <div
-          class="p-6 max-h-[70vh] overflow-y-auto custom-scrollbar space-y-6"
-        >
-          <!-- How to Open -->
+        <div class="p-5 max-h-[65vh] overflow-y-auto custom-scrollbar space-y-5">
           <div>
-            <h4
-              class="text-sm font-bold text-[#FF8A3D] mb-3 uppercase tracking-wider"
-            >
-              Opening Windows
-            </h4>
-            <div class="space-y-2 text-sm">
-              <div class="flex items-start gap-3 p-3 bg-[#2a2f35] rounded-lg">
-                <div class="flex-shrink-0 w-32 text-zinc-400 font-mono text-xs">
-                  <kbd
-                    class="px-2 py-1 bg-[#171a1d] rounded border border-[#333]"
-                    >{altKey}</kbd
-                  >
-                  +
-                  <kbd
-                    class="px-2 py-1 bg-[#171a1d] rounded border border-[#333]"
-                    >V</kbd
-                  >
+            <h4 class="text-[10px] font-semibold uppercase tracking-wider text-[#AEB291] mb-2.5">Opening Windows</h4>
+            <div class="space-y-1.5">
+              <div class="flex items-start gap-3 p-2.5 bg-[#1e2228] rounded text-sm">
+                <div class="text-zinc-400 font-mono text-[11px] shrink-0 mt-0.5">
+                  <kbd class="px-1.5 py-0.5 bg-[#17191c] rounded border border-[#252a30] text-xs">{altKey}</kbd>+<kbd class="px-1.5 py-0.5 bg-[#17191c] rounded border border-[#252a30] text-xs">V</kbd>
                 </div>
                 <div>
-                  <div class="text-white font-semibold">Quick Popup</div>
-                  <div class="text-zinc-500 text-xs">
-                    Opens the quick access popup window
-                  </div>
+                  <div class="text-white text-xs font-medium">Quick Popup</div>
+                  <div class="text-zinc-500 text-[11px]">Opens the quick access popup</div>
                 </div>
               </div>
-              <div class="flex items-start gap-3 p-3 bg-[#2a2f35] rounded-lg">
-                <div class="flex-shrink-0 w-32 text-zinc-400 text-xs">
-                  Tray Icon
-                </div>
+              <div class="flex items-start gap-3 p-2.5 bg-[#1e2228] rounded text-sm">
+                <div class="text-zinc-400 text-[11px] shrink-0 mt-0.5">Tray Icon</div>
                 <div>
-                  <div class="text-white font-semibold">Main Window</div>
-                  <div class="text-zinc-500 text-xs">
-                    Click the tray icon to open the main window
-                  </div>
+                  <div class="text-white text-xs font-medium">Main Window</div>
+                  <div class="text-zinc-500 text-[11px]">Click the tray icon</div>
                 </div>
               </div>
             </div>
           </div>
-
-          <!-- Navigation Shortcuts -->
           <div>
-            <h4
-              class="text-sm font-bold text-[#FF8A3D] mb-3 uppercase tracking-wider"
-            >
-              Navigation
-            </h4>
-            <div class="space-y-2 text-sm">
-              <div
-                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
-              >
-                <span class="text-zinc-300">Navigate Down</span>
-                <kbd
-                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
-                  >↓</kbd
-                >
+            <h4 class="text-[10px] font-semibold uppercase tracking-wider text-[#AEB291] mb-2.5">Navigation</h4>
+            <div class="space-y-0.5">
+              <div class="flex items-center justify-between p-2 hover:bg-[#1e2228] rounded text-xs">
+                <span class="text-zinc-300">Navigate items</span>
+                <div class="flex gap-1">
+                  <kbd class="px-1.5 py-0.5 bg-[#1e2228] rounded border border-[#252a30] text-zinc-400">↑</kbd>
+                  <kbd class="px-1.5 py-0.5 bg-[#1e2228] rounded border border-[#252a30] text-zinc-400">↓</kbd>
+                </div>
               </div>
-              <div
-                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
-              >
-                <span class="text-zinc-300">Navigate Up</span>
-                <kbd
-                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
-                  >↑</kbd
-                >
-              </div>
-              <div
-                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
-              >
+              <div class="flex items-center justify-between p-2 hover:bg-[#1e2228] rounded text-xs">
                 <span class="text-zinc-300">Close Window</span>
-                <kbd
-                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
-                  >Esc</kbd
-                >
+                <kbd class="px-1.5 py-0.5 bg-[#1e2228] rounded border border-[#252a30] text-zinc-400">Esc</kbd>
               </div>
             </div>
           </div>
-
-          <!-- Action Shortcuts -->
           <div>
-            <h4
-              class="text-sm font-bold text-[#FF8A3D] mb-3 uppercase tracking-wider"
-            >
-              Actions
-            </h4>
-            <div class="space-y-2 text-sm">
-              <div
-                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
-              >
+            <h4 class="text-[10px] font-semibold uppercase tracking-wider text-[#AEB291] mb-2.5">Actions</h4>
+            <div class="space-y-0.5">
+              <div class="flex items-center justify-between p-2 hover:bg-[#1e2228] rounded text-xs">
                 <span class="text-zinc-300">Copy Selected</span>
-                <kbd
-                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
-                  >Enter</kbd
-                >
+                <kbd class="px-1.5 py-0.5 bg-[#1e2228] rounded border border-[#252a30] text-zinc-400">Enter</kbd>
               </div>
-              <div
-                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
-              >
+              <div class="flex items-center justify-between p-2 hover:bg-[#1e2228] rounded text-xs">
                 <span class="text-zinc-300">Delete Item</span>
                 <div class="flex items-center gap-1">
-                  <kbd
-                    class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
-                    >Delete</kbd
-                  >
-                  /
-                  <kbd
-                    class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
-                    >{modKey}+{deleteKey}</kbd
-                  >
+                  <kbd class="px-1.5 py-0.5 bg-[#1e2228] rounded border border-[#252a30] text-zinc-400">Delete</kbd>
+                  <span class="text-zinc-600">/</span>
+                  <kbd class="px-1.5 py-0.5 bg-[#1e2228] rounded border border-[#252a30] text-zinc-400">{modKey}+{deleteKey}</kbd>
                 </div>
               </div>
-              <div
-                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
-              >
-                <span class="text-zinc-300">Pin/Unpin Item</span>
-                <kbd
-                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
-                  >{modKey}+P</kbd
-                >
+              <div class="flex items-center justify-between p-2 hover:bg-[#1e2228] rounded text-xs">
+                <span class="text-zinc-300">Pin / Unpin</span>
+                <kbd class="px-1.5 py-0.5 bg-[#1e2228] rounded border border-[#252a30] text-zinc-400">{modKey}+P</kbd>
               </div>
-              <div
-                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
-              >
-                <span class="text-zinc-300">Categorize Item</span>
-                <kbd
-                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
-                  >{modKey}+C</kbd
-                >
+              <div class="flex items-center justify-between p-2 hover:bg-[#1e2228] rounded text-xs">
+                <span class="text-zinc-300">Add to Group</span>
+                <kbd class="px-1.5 py-0.5 bg-[#1e2228] rounded border border-[#252a30] text-zinc-400">{modKey}+C</kbd>
               </div>
-              <div
-                class="flex items-center justify-between p-2 hover:bg-[#2a2f35] rounded"
-              >
+              <div class="flex items-center justify-between p-2 hover:bg-[#1e2228] rounded text-xs">
                 <span class="text-zinc-300">Manage Groups</span>
-                <kbd
-                  class="px-2 py-1 bg-[#171a1d] rounded border border-[#333] text-xs"
-                  >{modKey}+G</kbd
-                >
+                <kbd class="px-1.5 py-0.5 bg-[#1e2228] rounded border border-[#252a30] text-zinc-400">{modKey}+G</kbd>
               </div>
             </div>
           </div>
-
-          <!-- Features -->
           <div>
-            <h4
-              class="text-sm font-bold text-[#FF8A3D] mb-3 uppercase tracking-wider"
-            >
-              Features
-            </h4>
-            <ul class="space-y-2 text-sm text-zinc-300">
-              <li class="flex items-start gap-2">
-                <span class="text-[#FF8A3D] mt-1">•</span>
-                <span
-                  ><strong class="text-white">Smart Groups:</strong> Automatically
-                  categorizes URLs, Images, and Text</span
-                >
-              </li>
-              <li class="flex items-start gap-2">
-                <span class="text-[#FF8A3D] mt-1">•</span>
-                <span
-                  ><strong class="text-white">Custom Groups:</strong> Create and
-                  organize items into custom categories</span
-                >
-              </li>
-              <li class="flex items-start gap-2">
-                <span class="text-[#FF8A3D] mt-1">•</span>
-                <span
-                  ><strong class="text-white">Pinned Items:</strong> Pin important
-                  items to keep them permanently</span
-                >
-              </li>
-              <li class="flex items-start gap-2">
-                <span class="text-[#FF8A3D] mt-1">•</span>
-                <span
-                  ><strong class="text-white">Search:</strong> Quickly find items
-                  with real-time search</span
-                >
-              </li>
-              <li class="flex items-start gap-2">
-                <span class="text-[#FF8A3D] mt-1">•</span>
-                <span
-                  ><strong class="text-white">Export/Import:</strong> Backup and
-                  restore your clipboard history</span
-                >
-              </li>
-              <li class="flex items-start gap-2">
-                <span class="text-[#FF8A3D] mt-1">•</span>
-                <span
-                  ><strong class="text-white">Privacy:</strong> All data is stored
-                  locally on your machine</span
-                >
-              </li>
+            <h4 class="text-[10px] font-semibold uppercase tracking-wider text-[#AEB291] mb-2.5">Features</h4>
+            <ul class="space-y-1.5 text-xs text-zinc-400">
+              <li class="flex items-start gap-2"><span class="text-[#FF8A3D] mt-0.5 shrink-0">•</span><span><strong class="text-zinc-200">Smart Groups</strong> — auto-categorizes URLs and Text</span></li>
+              <li class="flex items-start gap-2"><span class="text-[#FF8A3D] mt-0.5 shrink-0">•</span><span><strong class="text-zinc-200">Custom Groups</strong> — create and organize clips into categories</span></li>
+              <li class="flex items-start gap-2"><span class="text-[#FF8A3D] mt-0.5 shrink-0">•</span><span><strong class="text-zinc-200">Pin Items</strong> — keep important items permanently</span></li>
+              <li class="flex items-start gap-2"><span class="text-[#FF8A3D] mt-0.5 shrink-0">•</span><span><strong class="text-zinc-200">Add Manually</strong> — add text with a description to any group</span></li>
+              <li class="flex items-start gap-2"><span class="text-[#FF8A3D] mt-0.5 shrink-0">•</span><span><strong class="text-zinc-200">Privacy First</strong> — all data stored locally, no cloud</span></li>
             </ul>
           </div>
         </div>
-
-        <div class="p-4 border-t border-[#333] flex justify-end">
-          <button
-            class="px-6 py-2 bg-[#FF8A3D] text-white rounded-xl text-xs font-bold shadow-lg shadow-[#FF8A3D]/25 hover:bg-[#e67d36] transition-all"
-            onclick={() => (showHelpModal = false)}
-          >
-            Got it!
-          </button>
+        <div class="px-5 py-3 border-t border-[#252a30] flex justify-end">
+          <button class="h-8 px-4 bg-[#FF8A3D] text-[#111214] rounded text-xs font-semibold hover:bg-[#f07d34] transition-colors" onclick={() => (showHelpModal = false)}>Got it</button>
         </div>
       </div>
     </div>
@@ -2001,152 +1121,53 @@
   <!-- About Modal -->
   {#if showAboutModal}
     <div
-      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onclick={(e) => {
-        if (e.target === e.currentTarget) showAboutModal = false;
-      }}
-      onkeydown={(e) => {
-        if (e.key === "Escape") showAboutModal = false;
-      }}
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
+      class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onclick={(e) => { if (e.target === e.currentTarget) showAboutModal = false; }}
+      onkeydown={(e) => { if (e.key === "Escape") showAboutModal = false; }}
+      role="dialog" aria-modal="true" tabindex="-1"
     >
-      <div
-        class="w-full max-w-md bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
-      >
-        <div
-          class="p-6 border-b border-[#333] flex items-center justify-between"
-        >
+      <div class="w-full max-w-sm bg-[#17191c] border border-[#252a30] rounded shadow-2xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-[#252a30] flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <div
-              class="w-10 h-10 rounded-full flex items-center justify-center shadow-lg shadow-[#FF8A3D]/25"
-            >
-              <img src="/logo.png" alt="Ortu" class="w-8 h-8" />
-            </div>
+            <img src="/logo.png" alt="Ortu" class="w-8 h-8 rounded" />
             <div>
-              <h3 class="text-lg font-bold text-white">Ortu</h3>
-              <p class="text-xs text-zinc-500">Clipboard Manager</p>
+              <h3 class="text-sm font-semibold text-white">Ortu</h3>
+              <p class="text-[11px] text-zinc-500">Clipboard Manager</p>
             </div>
           </div>
-          <button
-            onclick={() => (showAboutModal = false)}
-            class="text-zinc-500 hover:text-white transition-colors"
-            aria-label="Close about dialog"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              ><line x1="18" y1="6" x2="6" y2="18"></line><line
-                x1="6"
-                y1="6"
-                x2="18"
-                y2="18"
-              ></line></svg
-            >
+          <button onclick={() => (showAboutModal = false)} class="text-zinc-500 hover:text-white transition-colors" aria-label="Close about dialog">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
-
-        <div class="p-6 space-y-6">
-          <div class="text-center space-y-2">
-            <div class="text-2xl font-bold text-white">
-              Version {appVersion}
-            </div>
-            <p class="text-sm text-zinc-400">
-              A powerful, privacy-focused clipboard manager for macOS
-            </p>
+        <div class="p-5 space-y-4">
+          <div class="text-center space-y-1">
+            <div class="text-2xl font-bold text-white">v{appVersion}</div>
+            <p class="text-xs text-zinc-500">Privacy-focused clipboard manager</p>
           </div>
-
-          <div class="space-y-4">
-            <div class="p-4 bg-[#2a2f35] rounded-xl">
-              <div class="text-xs text-zinc-500 uppercase tracking-wider mb-2">
-                Developer
-              </div>
-              <div class="text-sm text-white font-semibold">
-                Abhijith P Subash
+          <div class="p-3 bg-[#1e2228] rounded">
+            <div class="text-[10px] text-zinc-600 uppercase tracking-wider mb-1">Developer</div>
+            <div class="text-sm font-medium text-white">Abhijith P Subash</div>
+          </div>
+          <a href="https://www.linkedin.com/in/abhijith-p-subash-the-engineer/" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between p-3 bg-[#1e2228] hover:bg-[#252b33] rounded transition-colors group">
+            <div class="flex items-center gap-2.5">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" class="text-[#0A66C2] shrink-0">
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+              </svg>
+              <div>
+                <div class="text-xs font-medium text-white">LinkedIn</div>
+                <div class="text-[10px] text-zinc-500">@abhijith-p-subash-the-engineer</div>
               </div>
             </div>
-
-            <a
-              href="https://www.linkedin.com/in/abhijith-p-subash-the-engineer/"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-4 bg-[#2a2f35] hover:bg-[#343a42] rounded-xl transition-all group"
-            >
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    class="text-[#0A66C2]"
-                  >
-                    <path
-                      d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"
-                    />
-                  </svg>
-                  <div>
-                    <div class="text-sm text-white font-semibold">
-                      Connect on LinkedIn
-                    </div>
-                    <div class="text-xs text-zinc-500">
-                      @abhijith-p-subash-the-engineer
-                    </div>
-                  </div>
-                </div>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  class="text-zinc-600 group-hover:text-zinc-400 transition-colors"
-                >
-                  <path
-                    d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
-                  ></path>
-                  <polyline points="15 3 21 3 21 9"></polyline>
-                  <line x1="10" y1="14" x2="21" y2="3"></line>
-                </svg>
-              </div>
-            </a>
-
-            <div
-              class="p-4 bg-gradient-to-br from-[#FF8A3D]/10 to-[#FF8A3D]/6 rounded-xl border border-[#AEB291]/35"
-            >
-              <div class="text-xs text-[#ff9b5a] uppercase tracking-wider mb-2">
-                Privacy First
-              </div>
-              <p class="text-xs text-zinc-400">
-                All your clipboard data is stored locally on your device. No
-                cloud sync, no tracking, no external servers.
-              </p>
-            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-zinc-600 group-hover:text-zinc-400 transition-colors"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+          <div class="p-3 bg-[#FF8A3D]/6 rounded border border-[#FF8A3D]/10">
+            <div class="text-[10px] text-[#FF8A3D]/60 uppercase tracking-wider mb-1">Privacy First</div>
+            <p class="text-[11px] text-zinc-400">All data stored locally. No cloud, no tracking.</p>
           </div>
-
-          <div
-            class="pt-4 border-t border-[#333] text-center text-xs text-zinc-500"
-          >
-            © 2025 Ortu. All rights reserved.
-          </div>
+          <p class="text-center text-[10px] text-zinc-600">© 2025 Ortu. All rights reserved.</p>
         </div>
-
-        <div class="p-4 border-t border-[#333] flex justify-end">
-          <button
-            class="px-6 py-2 bg-[#FF8A3D] text-white rounded-xl text-xs font-bold shadow-lg shadow-[#FF8A3D]/25 hover:bg-[#e67d36] transition-all"
-            onclick={() => (showAboutModal = false)}
-          >
-            Close
-          </button>
+        <div class="px-5 py-3 border-t border-[#252a30] flex justify-end">
+          <button class="h-8 px-4 bg-[#FF8A3D] text-[#111214] rounded text-xs font-semibold hover:bg-[#f07d34] transition-colors" onclick={() => (showAboutModal = false)}>Close</button>
         </div>
       </div>
     </div>
@@ -2155,69 +1176,50 @@
   <!-- Add Item Modal -->
   {#if showAddItemModal}
     <div
-      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onclick={(e) => { if (e.target === e.currentTarget) showAddItemModal = false; }}
       onkeydown={(e) => { if (e.key === "Escape") showAddItemModal = false; }}
       role="dialog" aria-modal="true" tabindex="-1"
     >
-      <div class="w-full max-w-md bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-        <div class="px-6 py-4 border-b border-[#333] flex items-center justify-between">
+      <div class="w-full max-w-md bg-[#17191c] border border-[#252a30] rounded shadow-2xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-[#252a30] flex items-center justify-between">
           <div>
-            <h3 class="text-sm font-bold text-white">Add Item</h3>
-            <p class="text-[10px] text-zinc-500 mt-0.5">Manually add text with an optional description</p>
+            <h3 class="text-sm font-semibold text-white">Add Item</h3>
+            <p class="text-[11px] text-zinc-500 mt-0.5">Manually add text to your library</p>
           </div>
-          <button onclick={() => (showAddItemModal = false)} class="text-zinc-500 hover:text-white" aria-label="Close">
+          <button onclick={() => (showAddItemModal = false)} class="text-zinc-500 hover:text-white transition-colors" aria-label="Close">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
-        <div class="p-6 space-y-4">
+        <div class="p-5 space-y-3.5">
           <div>
-            <label for="item-desc" class="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Description (optional)</label>
-            <input
-              id="item-desc"
-              type="text"
-              bind:value={newItemDescription}
-              placeholder="Short label e.g. 'AWS prod key'"
-              class="w-full bg-[#2a2f35] border border-[#333] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium placeholder:text-zinc-600"
-              maxlength="120"
-            />
+            <label for="item-desc" class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">
+              Description <span class="normal-case tracking-normal font-normal text-zinc-600">(optional)</span>
+            </label>
+            <input id="item-desc" type="text" bind:value={newItemDescription} placeholder="e.g. AWS prod key, API endpoint..." class="w-full bg-[#1e2228] border border-[#252a30] rounded px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/30 transition-colors placeholder:text-zinc-600" maxlength="120" />
           </div>
           <div>
-            <label for="item-content" class="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Content <span class="text-[#FF8A3D]">*</span></label>
-            <textarea
-              id="item-content"
-              bind:value={newItemContent}
-              placeholder="Paste or type your content here..."
-              rows="5"
-              class="w-full bg-[#2a2f35] border border-[#333] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium placeholder:text-zinc-600 resize-none"
-              onkeydown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) addManualItem(); }}
-            ></textarea>
+            <label for="item-content" class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">
+              Content <span class="text-[#FF8A3D]">*</span>
+            </label>
+            <textarea id="item-content" bind:value={newItemContent} placeholder="Paste or type content here..." rows="5" class="w-full bg-[#1e2228] border border-[#252a30] rounded px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/30 transition-colors placeholder:text-zinc-600 resize-none" onkeydown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) addManualItem(); }}></textarea>
           </div>
           <div>
-            <label for="item-group" class="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5">Group (optional)</label>
-            <input
-              id="item-group"
-              type="text"
-              bind:value={newItemGroupInput}
-              placeholder="Group name or leave empty"
-              list="groups-datalist"
-              class="w-full bg-[#2a2f35] border border-[#333] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all font-medium placeholder:text-zinc-600"
-              onkeydown={(e) => { if (e.key === "Enter") addManualItem(); }}
-            />
-            <datalist id="groups-datalist">
-              {#each groups as g}<option value={g}></option>{/each}
-            </datalist>
+            <label for="item-group" class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">
+              Group <span class="normal-case tracking-normal font-normal text-zinc-600">(optional)</span>
+            </label>
+            <input id="item-group" type="text" bind:value={newItemGroupInput} placeholder="Group name or leave empty" list="groups-datalist" class="w-full bg-[#1e2228] border border-[#252a30] rounded px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/30 transition-colors placeholder:text-zinc-600" onkeydown={(e) => { if (e.key === "Enter") addManualItem(); }} />
+            <datalist id="groups-datalist">{#each groups as g}<option value={g}></option>{/each}</datalist>
           </div>
         </div>
-        <div class="px-6 pb-6 flex justify-end gap-3">
-          <button onclick={() => (showAddItemModal = false)} class="px-4 py-2 text-xs text-zinc-500 font-bold hover:text-white transition-colors">Cancel</button>
-          <button
-            onclick={addManualItem}
-            disabled={!newItemContent.trim()}
-            class="px-6 py-2 bg-[#FF8A3D] text-white rounded-xl text-xs font-bold shadow-lg shadow-[#FF8A3D]/25 hover:bg-[#e67d36] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Add Item
-          </button>
+        <div class="px-5 pb-5 flex items-center justify-between">
+          <span class="text-[10px] text-zinc-700">{modKey}+↵ to save</span>
+          <div class="flex gap-2">
+            <button onclick={() => (showAddItemModal = false)} class="h-8 px-3 text-xs text-zinc-500 hover:text-white transition-colors">Cancel</button>
+            <button onclick={addManualItem} disabled={!newItemContent.trim()} class="h-8 px-4 bg-[#FF8A3D] text-[#111214] rounded text-xs font-semibold hover:bg-[#f07d34] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              Add Item
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -2231,16 +1233,14 @@
       onkeydown={(e) => { if (e.key === "Escape") confirmModal = null; }}
       role="dialog" aria-modal="true" tabindex="-1"
     >
-      <div class="w-full max-w-xs bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
-        <p class="text-sm text-zinc-200 mb-5">{confirmModal.message}</p>
-        <div class="flex justify-end gap-3">
-          <button onclick={() => (confirmModal = null)} class="px-4 py-2 text-xs text-zinc-500 font-bold hover:text-white transition-colors">Cancel</button>
+      <div class="w-full max-w-xs bg-[#17191c] border border-[#252a30] rounded shadow-2xl p-5">
+        <p class="text-sm text-zinc-200 mb-4">{confirmModal.message}</p>
+        <div class="flex justify-end gap-2">
+          <button onclick={() => (confirmModal = null)} class="h-8 px-3 text-xs text-zinc-500 hover:text-white transition-colors">Cancel</button>
           <button
             onclick={() => { const cb = confirmModal?.onConfirm; confirmModal = null; cb?.(); }}
-            class="px-5 py-2 bg-[#FF8A3D] text-white rounded-xl text-xs font-bold hover:bg-[#e67d36] transition-all"
-          >
-            Confirm
-          </button>
+            class="h-8 px-4 bg-[#FF8A3D] text-[#111214] rounded text-xs font-semibold hover:bg-[#f07d34] transition-colors"
+          >Confirm</button>
         </div>
       </div>
     </div>
@@ -2248,26 +1248,19 @@
 
   <!-- Import Group Name Modal -->
   {#if showImportGroupModal}
-    <div
-      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      role="dialog" aria-modal="true" tabindex="-1"
-    >
-      <div class="w-full max-w-xs bg-[#171a1d] border border-[#333] rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
-        <h3 class="text-sm font-bold text-white mb-4">Name for imported group</h3>
+    <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" tabindex="-1">
+      <div class="w-full max-w-xs bg-[#17191c] border border-[#252a30] rounded shadow-2xl p-5">
+        <h3 class="text-sm font-semibold text-white mb-3">Name imported group</h3>
         <input
           type="text"
           bind:value={importGroupNameInput}
           placeholder="Group name..."
-          class="w-full bg-[#2a2f35] border border-[#333] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/45 transition-all mb-4"
+          class="w-full bg-[#1e2228] border border-[#252a30] rounded px-3 py-2 text-sm focus:outline-none focus:border-[#AEB291]/30 transition-colors mb-3"
           onkeydown={(e) => { if (e.key === "Enter") confirmImportGroup(); if (e.key === "Escape") showImportGroupModal = false; }}
         />
-        <div class="flex justify-end gap-3">
-          <button onclick={() => (showImportGroupModal = false)} class="px-4 py-2 text-xs text-zinc-500 font-bold hover:text-white transition-colors">Cancel</button>
-          <button
-            onclick={confirmImportGroup}
-            disabled={!importGroupNameInput.trim()}
-            class="px-5 py-2 bg-[#AEB291] text-white rounded-xl text-xs font-bold hover:bg-[#4d514a] transition-all disabled:opacity-40"
-          >
+        <div class="flex justify-end gap-2">
+          <button onclick={() => (showImportGroupModal = false)} class="h-8 px-3 text-xs text-zinc-500 hover:text-white transition-colors">Cancel</button>
+          <button onclick={confirmImportGroup} disabled={!importGroupNameInput.trim()} class="h-8 px-4 bg-[#AEB291] hover:bg-[#9ea382] text-[#111214] rounded text-xs font-semibold transition-colors disabled:opacity-40">
             Import
           </button>
         </div>
@@ -2277,30 +1270,27 @@
 
   <!-- Copied Toast -->
   {#if showCopiedToast}
-    <div class="fixed bottom-4 right-4 bg-[#171a1d] border border-green-500/50 rounded-xl shadow-2xl shadow-green-500/20 px-4 py-3 flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-300 z-50">
-      <div class="flex items-center justify-center w-5 h-5 bg-green-500/20 rounded-full">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="text-green-500"><polyline points="20 6 9 17 4 12"/></svg>
-      </div>
-      <span class="text-sm font-semibold text-white">Copied!</span>
+    <div class="fixed bottom-4 right-4 bg-[#17191c] border border-green-500/25 rounded shadow-xl px-3 py-2 flex items-center gap-2 z-50">
+      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="text-green-500"><polyline points="20 6 9 17 4 12"/></svg>
+      <span class="text-xs font-medium text-white">Copied</span>
     </div>
   {/if}
 
   <!-- Toast stack -->
-  <div class="fixed bottom-4 left-4 z-50 flex flex-col gap-2 pointer-events-none">
+  <div class="fixed bottom-4 left-4 z-50 flex flex-col gap-1.5 pointer-events-none">
     {#each toasts as toast (toast.id)}
-      <div class="pointer-events-auto px-4 py-3 rounded-xl border shadow-2xl flex items-center gap-3 animate-in slide-in-from-left-5 duration-300
-        {toast.type === 'success' ? 'bg-[#171a1d] border-green-500/50 shadow-green-500/10' :
-         toast.type === 'error'   ? 'bg-[#171a1d] border-red-500/50 shadow-red-500/10' :
-                                    'bg-[#171a1d] border-[#AEB291]/40 shadow-[#AEB291]/10'}"
-      >
+      <div class="pointer-events-auto px-3 py-2 rounded border shadow-xl flex items-center gap-2.5
+        {toast.type === 'success' ? 'bg-[#17191c] border-green-500/20' :
+         toast.type === 'error'   ? 'bg-[#17191c] border-red-500/20' :
+                                    'bg-[#17191c] border-[#252a30]'}">
         {#if toast.type === 'success'}
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="text-green-500 shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="text-green-500 shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
         {:else if toast.type === 'error'}
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-red-400 shrink-0"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-red-400 shrink-0"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
         {:else}
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-[#AEB291] shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-[#AEB291] shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
         {/if}
-        <span class="text-xs font-semibold text-white">{toast.message}</span>
+        <span class="text-xs text-zinc-200">{toast.message}</span>
       </div>
     {/each}
   </div>
@@ -2311,19 +1301,5 @@
     margin: 0;
     overflow: hidden;
     background: transparent;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 3px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #333;
-    border-radius: 10px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #444;
   }
 </style>
