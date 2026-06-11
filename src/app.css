@@ -3,61 +3,94 @@
 @import "tailwindcss/utilities";
 
 :root {
-  --surface-0: #111214;
-  --surface-1: #17191c;
-  --surface-2: #202328;
-  --stroke: #2d3136;
-  --text-primary: #f5f7fa;
-  --text-secondary: #aeb6c2;
-  --accent: #3f423c;
-  --accent-orange: #ff8a3d;
-  --accent-olive: #aeb291;
+  --bg-deep:    #08090c;
+  --bg-base:    #0e1014;
+  --bg-surface: #141820;
+  --bg-raised:  #1c2028;
+  --stroke:     rgba(255, 255, 255, 0.07);
+  --stroke-md:  rgba(255, 255, 255, 0.11);
+  --text-1:     #f0f2f5;
+  --text-2:     #8b929c;
+  --text-3:     #4a5060;
+  --accent:     #ff8a3d;
+  --sage:       #aeb291;
 }
 
 html,
 body {
-  background:
-    radial-gradient(1200px 600px at 20% -20%, rgba(174, 178, 145, 0.1), transparent),
-    linear-gradient(180deg, #0f1012 0%, #121417 100%);
-  color: var(--text-primary);
-  font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+  background: var(--bg-deep);
+  color: var(--text-1);
+  font-family: -apple-system, "SF Pro Text", "Manrope", "Segoe UI Variable Text",
+    "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* ── Scrollbar ──────────────────────────────────────── */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #3a3f46 transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #41464f, #333840);
+.custom-scrollbar::-webkit-scrollbar        { width: 3px; }
+.custom-scrollbar::-webkit-scrollbar-track  { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb  {
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: content-box;
 }
 
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+/* ── Shared modal atoms ─────────────────────────────── */
+.modal-backdrop {
+  @apply fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4;
 }
 
-/* Minimal radius scale for a cleaner professional look */
-.rounded-2xl {
-  border-radius: 0.375rem !important;
+.modal-box {
+  @apply bg-[#13151b] border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden p-5;
 }
 
-.rounded-xl {
-  border-radius: 0.375rem !important;
+.modal-title {
+  @apply text-[14px] font-semibold text-white/80 mb-4;
 }
 
-.rounded-lg {
-    border-radius: 0.375rem !important;
+.modal-footer {
+  @apply flex justify-end gap-2;
 }
 
-.rounded-md,
-.rounded {
-  border-radius: 0.375rem !important;
+.modal-check-row {
+  @apply flex items-center gap-2.5 text-[12px] text-white/45 p-2 hover:bg-white/[0.04] rounded-lg cursor-pointer transition-colors;
+}
+
+.modal-input {
+  @apply bg-white/[0.04] border border-white/[0.07] rounded-lg px-3 py-2 text-[13px] text-white/70 focus:outline-none focus:border-white/[0.12] transition-all placeholder:text-white/20;
+}
+
+.modal-field-label {
+  @apply block text-[10px] font-semibold uppercase tracking-[0.1em] text-white/30 mb-1.5;
+}
+
+/* ── Buttons ─────────────────────────────────────────── */
+.btn-primary {
+  @apply h-8 px-4 bg-[#FF8A3D] text-black rounded-lg text-[12px] font-semibold hover:bg-[#ff9a56] transition-colors active:scale-95;
+}
+
+.btn-ghost {
+  @apply h-8 px-3 text-[12px] text-white/35 hover:text-white/70 transition-colors;
+}
+
+/* ── Menu items ─────────────────────────────────────── */
+.menu-item {
+  @apply w-full text-left px-3 py-[7px] text-[12px] text-white/50 hover:text-white/90 hover:bg-white/[0.05] flex items-center gap-2.5 transition-colors;
+}
+
+/* ── Section headers (time groups, pinned) ──────────── */
+.section-header {
+  @apply flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.12em] mb-2 mt-1 px-1;
+}
+.section-header::after {
+  content: '';
+  @apply flex-1 h-px bg-white/[0.04];
+}
+
+/* ── Modal section label ────────────────────────────── */
+.section-label {
+  @apply text-[10px] font-semibold uppercase tracking-[0.1em] text-[#AEB291]/70;
 }
