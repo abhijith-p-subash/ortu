@@ -350,38 +350,113 @@ impl ClipboardDB {
 
     pub fn export_group(&self, name: String, path: std::path::PathBuf) -> Result<()> {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        // Fetch items associated with this group name via item_groups
+
         let mut stmt = conn.prepare(
-            "SELECT h.raw_content 
+            "SELECT h.raw_content, h.description
              FROM history h
              JOIN item_groups ig ON h.id = ig.item_id
              JOIN groups g ON ig.group_id = g.id
              WHERE g.name = ?1
              ORDER BY h.created_at DESC",
         )?;
-        let rows = stmt.query_map(params![name], |row| row.get::<_, String>(0))?;
-        let mut content = Vec::new();
-        for r in rows {
-            content.push(r?);
+
+        let rows: Vec<(String, Option<String>)> = stmt
+            .query_map(params![name], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let total = rows.len();
+        let exported_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let divider = "═".repeat(72);
+        let thin = "─".repeat(72);
+
+        let mut out = String::new();
+        out.push('\u{FEFF}'); // UTF-8 BOM so text editors detect encoding correctly
+
+        out.push_str(&format!("{divider}\n"));
+        out.push_str(&format!("  ORTU GROUP EXPORT  —  {name}\n"));
+        out.push_str(&format!("  Exported : {exported_at}\n"));
+        out.push_str(&format!("  Items    : {total}\n"));
+        out.push_str(&format!("{divider}\n"));
+
+        for (i, (content, description)) in rows.iter().enumerate() {
+            if i > 0 {
+                out.push_str(&format!("{thin}\n"));
+            }
+
+            if let Some(desc) = description {
+                if !desc.trim().is_empty() {
+                    out.push_str(&format!("Description: {desc}\n"));
+                }
+            }
+
+            out.push('\n');
+            for line in content.lines() {
+                out.push_str(&format!("  {line}\n"));
+            }
+            out.push('\n');
         }
 
-        let output = content.join("\n---\n");
-        std::fs::write(path, output)
+        out.push_str(&format!("{divider}\n"));
+        out.push_str(&format!("  End of export  —  {name}  ({total} items)\n"));
+        out.push_str(&format!("{divider}\n"));
+
+        std::fs::write(path, out)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         Ok(())
     }
 
     pub fn export_all_txt(&self, path: std::path::PathBuf) -> Result<()> {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let mut stmt = conn.prepare("SELECT raw_content FROM history ORDER BY created_at DESC")?;
-        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-        let mut content = Vec::new();
-        for r in rows {
-            content.push(r?);
+
+        let mut stmt = conn.prepare(
+            "SELECT h.raw_content, h.description
+             FROM history h
+             ORDER BY h.created_at DESC",
+        )?;
+
+        let rows: Vec<(String, Option<String>)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let total = rows.len();
+        let exported_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let divider = "═".repeat(72);
+        let thin = "─".repeat(72);
+
+        let mut out = String::new();
+        out.push('\u{FEFF}'); // UTF-8 BOM so text editors detect encoding correctly
+
+        out.push_str(&format!("{divider}\n"));
+        out.push_str("  ORTU CLIPBOARD EXPORT\n");
+        out.push_str(&format!("  Exported : {exported_at}\n"));
+        out.push_str(&format!("  Total    : {total} item(s)\n"));
+        out.push_str(&format!("{divider}\n"));
+
+        for (i, (content, description)) in rows.iter().enumerate() {
+            if i > 0 {
+                out.push_str(&format!("{thin}\n"));
+            }
+
+            if let Some(desc) = description {
+                if !desc.trim().is_empty() {
+                    out.push_str(&format!("Description: {desc}\n"));
+                }
+            }
+
+            out.push('\n');
+            for line in content.lines() {
+                out.push_str(&format!("  {line}\n"));
+            }
+            out.push('\n');
         }
 
-        let output = content.join("\n---\n");
-        std::fs::write(path, output)
+        out.push_str(&format!("{divider}\n"));
+        out.push_str(&format!("  End of export — {total} item(s)\n"));
+        out.push_str(&format!("{divider}\n"));
+
+        std::fs::write(path, out)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         Ok(())
     }
