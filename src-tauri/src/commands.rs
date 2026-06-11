@@ -405,6 +405,21 @@ pub fn add_manual_item(
 }
 
 #[tauri::command]
+pub fn update_item(
+    app: AppHandle,
+    id: i64,
+    content: String,
+    description: Option<String>,
+) -> Result<(), String> {
+    if content.trim().is_empty() {
+        return Err("Content cannot be empty".to_string());
+    }
+    let db = app.state::<ClipboardDB>();
+    db.update_item(id, content, description)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn manual_cleanup(app: AppHandle) -> Result<(), String> {
     let db = app.state::<ClipboardDB>();
     db.prune_expired().map_err(|e| e.to_string())

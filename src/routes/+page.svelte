@@ -54,6 +54,12 @@
   let showImportGroupModal = $state(false);
   let importGroupPath = $state("");
 
+  // ── Edit item modal state ──────────────────────────────
+  let showEditModal = $state(false);
+  let editingItem = $state<ClipboardItem | null>(null);
+  let editContent = $state("");
+  let editDescription = $state("");
+
   interface Toast { id: number; message: string; type: "success" | "error" | "info" }
   let toasts = $state<Toast[]>([]);
   let toastCounter = 0;
@@ -367,6 +373,28 @@
     } catch (e) { showToast("Failed to add: " + e, "error"); }
   }
 
+  function openEditModal(item: ClipboardItem) {
+    editingItem = item;
+    editContent = item.raw_content;
+    editDescription = item.description || "";
+    showEditModal = true;
+  }
+
+  async function saveEditItem() {
+    if (!editingItem || !editContent.trim()) return;
+    try {
+      await invoke("update_item", {
+        id: editingItem.id,
+        content: editContent.trim(),
+        description: editDescription.trim() || null,
+      });
+      showEditModal = false;
+      editingItem = null;
+      await refreshAll();
+      showToast("Item updated", "success");
+    } catch (e) { showToast("Failed to update: " + e, "error"); }
+  }
+
   // ── Keyboard ───────────────────────────────────────────
   function handleKeydown(e: KeyboardEvent) {
     // ⌘1–9: instant copy
@@ -381,6 +409,11 @@
     if (isCategorizing) {
       if (e.key === "Enter") { e.preventDefault(); moveItemToGroup(); }
       else if (e.key === "Escape") { isCategorizing = false; newGroupName = ""; }
+      return;
+    }
+
+    if (showEditModal) {
+      if (e.key === "Escape") showEditModal = false;
       return;
     }
 
@@ -851,9 +884,9 @@
     <div class="min-w-0 flex-1">
 
       {#if item.description}
-        <!-- Manual item with description -->
-        <p class="text-[12px] font-semibold text-[#AEB291] mb-1 truncate tracking-tight">{item.description}</p>
-        <p class="text-[13px] text-white/65 line-clamp-2 leading-relaxed break-words">{item.raw_content}</p>
+        <!-- content is primary; description is a small secondary label -->
+        <p class="text-[13px] text-white/80 {expandedItems.includes(item.id) ? '' : 'line-clamp-2'} leading-relaxed break-words mb-1">{item.raw_content}</p>
+        <p class="text-[10px] text-white/30 truncate">{item.description}</p>
 
       {:else if urlInfo}
         <!-- URL item: domain = small context label, path = primary content -->
@@ -904,6 +937,12 @@
           <line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
         </svg>
       </button>
+      <button class="p-1.5 rounded-lg text-white/25 hover:text-[#AEB291] hover:bg-white/[0.06] transition-all"
+        onclick={(e) => { e.stopPropagation(); openEditModal(item); }} title="Edit">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+      </button>
       <button class="p-1.5 rounded-lg text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-all"
         onclick={(e) => { e.stopPropagation(); categorizingItemId = item.id; newGroupName = ""; isCategorizing = true; }} title="Add to group">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -932,13 +971,16 @@
       <!-- Group / category pills -->
       {#if item.groups && item.groups.length > 0}
         {#each item.groups as grp}
-          <div class="flex items-center gap-0.5">
+          <div class="inline-flex items-center rounded-full bg-white/[0.05] border border-white/[0.07] hover:border-[#AEB291]/25 transition-colors overflow-hidden">
             <button
-              class="text-[9px] font-semibold uppercase tracking-wide py-0.5 px-2 rounded-full bg-white/[0.05] text-white/28 border border-white/[0.07] hover:text-[#AEB291] hover:border-[#AEB291]/25 transition-colors"
+              class="text-[9px] font-semibold uppercase tracking-wide py-0.5 pl-2 {selectedGroup === grp ? 'pr-1' : 'pr-2'} text-white/28 hover:text-[#AEB291] transition-colors"
               onclick={(e) => { e.stopPropagation(); selectedGroup = grp; }}
             >{grp}</button>
             {#if selectedGroup === grp}
-              <button onclick={(e) => { e.stopPropagation(); removeFromGroup(item, grp); }} class="text-[9px] text-white/18 hover:text-[#FF8A3D] transition-colors" title="Remove from group">×</button>
+              <button
+                onclick={(e) => { e.stopPropagation(); removeFromGroup(item, grp); }}
+                class="pr-1.5 text-[11px] leading-none text-white/25 hover:text-[#FF8A3D] transition-colors"
+                title="Remove from group">×</button>
             {/if}
           </div>
         {/each}
@@ -1195,14 +1237,17 @@
       </div>
       <div class="p-5 space-y-3.5">
         <div>
-          <label for="item-desc" class="modal-field-label">Description <span class="normal-case tracking-normal font-normal text-white/20">(optional)</span></label>
-          <input id="item-desc" type="text" bind:value={newItemDescription} placeholder="e.g. AWS prod key, API endpoint…" class="modal-input w-full" maxlength="120" />
-        </div>
-        <div>
           <label for="item-content" class="modal-field-label">Content <span class="text-[#FF8A3D]">*</span></label>
           <textarea id="item-content" bind:value={newItemContent} placeholder="Paste or type content here…" rows="5"
             class="modal-input w-full resize-none"
             onkeydown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) addManualItem(); }}></textarea>
+        </div>
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label for="item-desc" class="modal-field-label mb-0">Description <span class="normal-case tracking-normal font-normal text-white/20">(optional)</span></label>
+            <span class="text-[9px] tabular-nums {newItemDescription.length > 70 ? 'text-[#FF8A3D]/70' : 'text-white/20'}">{newItemDescription.length}/80</span>
+          </div>
+          <input id="item-desc" type="text" bind:value={newItemDescription} placeholder="Short label, e.g. AWS prod key…" class="modal-input w-full" maxlength="80" />
         </div>
         <div>
           <label for="item-group" class="modal-field-label">Group <span class="normal-case tracking-normal font-normal text-white/20">(optional)</span></label>
@@ -1216,6 +1261,52 @@
         <div class="flex gap-2">
           <button onclick={() => (showAddItemModal = false)} class="btn-ghost">Cancel</button>
           <button onclick={addManualItem} disabled={!newItemContent.trim()} class="btn-primary disabled:opacity-35 disabled:cursor-not-allowed">Add Item</button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Edit Item -->
+{#if showEditModal && editingItem}
+  <div class="modal-backdrop"
+    onclick={(e) => { if (e.target === e.currentTarget) showEditModal = false; }}
+    onkeydown={(e) => { if (e.key === "Escape") showEditModal = false; }}
+    role="dialog" aria-modal="true" tabindex="-1">
+    <div class="modal-box w-full max-w-md">
+      <div class="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
+        <div>
+          <h3 class="modal-title mb-0">Edit Item</h3>
+          <p class="text-[11px] text-white/30 mt-0.5">Changes apply immediately on save</p>
+        </div>
+        <button onclick={() => (showEditModal = false)} class="text-white/25 hover:text-white/70 transition-colors" aria-label="Close">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="p-5 space-y-3.5">
+        <!-- Content — primary field, large -->
+        <div>
+          <label for="edit-content" class="modal-field-label">Content <span class="text-[#FF8A3D]">*</span></label>
+          <textarea id="edit-content" bind:value={editContent} placeholder="Content…" rows="6"
+            class="modal-input w-full resize-none"
+            onkeydown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveEditItem(); }}></textarea>
+        </div>
+        <!-- Description — secondary field, small cap -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label for="edit-desc" class="modal-field-label mb-0">Description <span class="normal-case tracking-normal font-normal text-white/20">(optional)</span></label>
+            <span class="text-[9px] tabular-nums {editDescription.length > 70 ? 'text-[#FF8A3D]/70' : 'text-white/20'}">{editDescription.length}/80</span>
+          </div>
+          <input id="edit-desc" type="text" bind:value={editDescription} placeholder="Short label, e.g. AWS prod key…"
+            class="modal-input w-full" maxlength="80"
+            onkeydown={(e) => { if (e.key === "Enter") saveEditItem(); }} />
+        </div>
+      </div>
+      <div class="px-5 pb-5 flex items-center justify-between">
+        <span class="text-[10px] text-white/20">{modKey}+↵ to save</span>
+        <div class="flex gap-2">
+          <button onclick={() => (showEditModal = false)} class="btn-ghost">Cancel</button>
+          <button onclick={saveEditItem} disabled={!editContent.trim()} class="btn-primary disabled:opacity-35 disabled:cursor-not-allowed">Save</button>
         </div>
       </div>
     </div>

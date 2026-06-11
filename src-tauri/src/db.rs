@@ -772,6 +772,20 @@ impl ClipboardDB {
         Ok(None)
     }
 
+    pub fn update_item(
+        &self,
+        id: i64,
+        content: String,
+        description: Option<String>,
+    ) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "UPDATE history SET raw_content = ?1, description = ?2 WHERE id = ?3",
+            params![content, description, id],
+        )?;
+        Ok(())
+    }
+
     pub fn delete_item(&self, id: i64) -> Result<()> {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM history WHERE id = ?1", params![id])?;
