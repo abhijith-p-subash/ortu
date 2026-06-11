@@ -7,11 +7,11 @@
   --bg-base:    #0e1014;
   --bg-surface: #141820;
   --bg-raised:  #1c2028;
-  --stroke:     rgba(255, 255, 255, 0.07);
-  --stroke-md:  rgba(255, 255, 255, 0.11);
+  --stroke:     rgba(255, 255, 255, 0.09);
+  --stroke-md:  rgba(255, 255, 255, 0.15);
   --text-1:     #f0f2f5;
-  --text-2:     #8b929c;
-  --text-3:     #4a5060;
+  --text-2:     #9aa0ab;
+  --text-3:     #545d6e;
   --accent:     #ff8a3d;
   --sage:       #aeb291;
 }
@@ -28,27 +28,27 @@ body {
 /* ── Scrollbar ──────────────────────────────────────── */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
 .custom-scrollbar::-webkit-scrollbar        { width: 3px; }
 .custom-scrollbar::-webkit-scrollbar-track  { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb  {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.13);
   border-radius: 999px;
 }
 
 /* ── Shared modal atoms ─────────────────────────────── */
 .modal-backdrop {
-  @apply fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4;
+  @apply fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4;
 }
 
 .modal-box {
-  @apply bg-[#13151b] border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden p-5;
+  @apply bg-[#13151b] border border-white/[0.12] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden p-5;
 }
 
 .modal-title {
-  @apply text-[14px] font-semibold text-white/80 mb-4;
+  @apply text-[14px] font-semibold text-white/85 mb-4;
 }
 
 .modal-footer {
@@ -56,15 +56,15 @@ body {
 }
 
 .modal-check-row {
-  @apply flex items-center gap-2.5 text-[12px] text-white/45 p-2 hover:bg-white/[0.04] rounded-lg cursor-pointer transition-colors;
+  @apply flex items-center gap-2.5 text-[12px] text-white/55 p-2 hover:bg-white/[0.05] rounded-lg cursor-pointer transition-colors;
 }
 
 .modal-input {
-  @apply bg-white/[0.04] border border-white/[0.07] rounded-lg px-3 py-2 text-[13px] text-white/70 focus:outline-none focus:border-white/[0.12] transition-all placeholder:text-white/20;
+  @apply bg-white/[0.05] border border-white/[0.1] rounded-lg px-3 py-2 text-[13px] text-white/75 focus:outline-none focus:border-white/[0.18] focus:bg-white/[0.07] transition-all placeholder:text-white/25;
 }
 
 .modal-field-label {
-  @apply block text-[10px] font-semibold uppercase tracking-[0.1em] text-white/30 mb-1.5;
+  @apply block text-[10px] font-semibold uppercase tracking-[0.1em] text-white/45 mb-1.5;
 }
 
 /* ── Buttons ─────────────────────────────────────────── */
@@ -73,12 +73,12 @@ body {
 }
 
 .btn-ghost {
-  @apply h-8 px-3 text-[12px] text-white/35 hover:text-white/70 transition-colors;
+  @apply h-8 px-3 text-[12px] text-white/50 hover:text-white/80 transition-colors;
 }
 
 /* ── Menu items ─────────────────────────────────────── */
 .menu-item {
-  @apply w-full text-left px-3 py-[7px] text-[12px] text-white/50 hover:text-white/90 hover:bg-white/[0.05] flex items-center gap-2.5 transition-colors;
+  @apply w-full text-left px-3 py-[7px] text-[12px] text-white/60 hover:text-white/90 hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors;
 }
 
 /* ── Section headers (time groups, pinned) ──────────── */
@@ -87,10 +87,10 @@ body {
 }
 .section-header::after {
   content: '';
-  @apply flex-1 h-px bg-white/[0.04];
+  @apply flex-1 h-px bg-white/[0.06];
 }
 
 /* ── Modal section label ────────────────────────────── */
 .section-label {
-  @apply text-[10px] font-semibold uppercase tracking-[0.1em] text-[#AEB291]/70;
+  @apply text-[10px] font-semibold uppercase tracking-[0.1em] text-[#AEB291]/80;
 }

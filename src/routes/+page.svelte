@@ -511,13 +511,13 @@
 <!-- ═══════════════════════════════════════════════════════
      ROOT
 ════════════════════════════════════════════════════════ -->
-<div class="flex flex-col h-screen bg-[#08090c] text-[#c8cdd4] overflow-hidden selection:bg-[#FF8A3D]/20">
+<div class="flex flex-col h-screen bg-[#08090c] text-[#d2d6dd] overflow-hidden selection:bg-[#FF8A3D]/20">
 
   <!-- ── Header ─────────────────────────────────────── -->
-  <header class="mt-6 h-[44px] shrink-0 px-4 flex items-center justify-between bg-[#08090c] border-b border-white/[0.05]">
+  <header class="mt-6 h-[44px] shrink-0 px-4 flex items-center justify-between bg-[#08090c] border-b border-white/[0.09]">
     <div class="flex items-center gap-2">
-      <img src="/logo.png" alt="" class="w-[18px] h-[18px] shrink-0 opacity-85" />
-      <span class="text-[13px] font-semibold text-white/80 tracking-tight">Ortu</span>
+      <img src="/logo.png" alt="" class="w-[18px] h-[18px] shrink-0 opacity-90" />
+      <span class="text-[13px] font-semibold text-white/88 tracking-tight">Ortu</span>
     </div>
     <div class="flex items-center gap-1">
       <button
@@ -531,7 +531,7 @@
         <button
           onclick={() => (showMoreMenu = !showMoreMenu)}
           aria-label="More options"
-          class="h-[26px] w-[26px] flex items-center justify-center rounded-md text-white/30 hover:text-white/70 hover:bg-white/[0.06] transition-all"
+          class="h-[26px] w-[26px] flex items-center justify-center rounded-md text-white/55 hover:text-white/90 hover:bg-white/[0.09] transition-all"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none">
             <circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/>
@@ -540,7 +540,7 @@
         {#if showMoreMenu}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div role="menu" tabindex="-1"
-            class="absolute right-0 top-[30px] w-44 bg-[#16181e] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/60 z-50 py-1.5"
+            class="absolute right-0 top-[30px] w-44 bg-[#1c1f28] border border-white/[0.14] rounded-xl shadow-2xl shadow-black/70 z-50 py-1.5"
             onmouseleave={() => (showMoreMenu = false)}>
             <button onclick={() => { showMoreMenu=false; openExportModal(); }}   class="menu-item">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -607,7 +607,7 @@
   <div class="flex flex-1 overflow-hidden min-w-0">
 
     <!-- ── Sidebar ──────────────────────────────────── -->
-    <aside class="w-[192px] shrink-0 flex flex-col border-r border-white/[0.05] bg-[#0a0c0f]">
+    <aside class="w-[192px] shrink-0 flex flex-col border-r border-white/[0.09] bg-[#0c0e13]">
 
       <nav class="py-3 px-2 space-y-px">
         <!-- All History -->
@@ -616,20 +616,20 @@
             <span class="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[18px] bg-[#FF8A3D] rounded-r-full pointer-events-none" aria-hidden="true"></span>
           {/if}
           <button
-            class="w-full flex items-center gap-2.5 pl-3 pr-2 py-[7px] rounded-lg text-[13px] transition-all {selectedGroup === null ? 'text-white font-medium bg-white/[0.05]' : 'text-white/35 hover:text-white/65 hover:bg-white/[0.04]'}"
+            class="w-full flex items-center gap-2.5 pl-3 pr-2 py-[7px] rounded-lg text-[13px] transition-all {selectedGroup === null ? 'text-white font-medium bg-white/[0.07]' : 'text-white/52 hover:text-white/80 hover:bg-white/[0.05]'}"
             onclick={() => { selectedGroup = null; }}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="{selectedGroup === null ? 'text-[#FF8A3D]' : 'text-white/25'}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="{selectedGroup === null ? 'text-[#FF8A3D]' : 'text-white/38'}">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
             </svg>
             <span class="flex-1 min-w-0 truncate">All History</span>
             {#if sidebarCounts.all > 0}
-              <span class="text-[10px] text-white/20 tabular-nums shrink-0">{sidebarCounts.all}</span>
+              <span class="text-[10px] text-white/32 tabular-nums shrink-0">{sidebarCounts.all}</span>
             {/if}
           </button>
         </div>
 
-        <div class="h-px bg-white/[0.04] my-1.5 mx-2"></div>
+        <div class="h-px bg-white/[0.07] my-1.5 mx-2"></div>
 
         <!-- URLs -->
         <div class="relative flex items-center">
@@ -637,15 +637,15 @@
             <span class="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[18px] bg-[#AEB291] rounded-r-full pointer-events-none" aria-hidden="true"></span>
           {/if}
           <button
-            class="w-full flex items-center gap-2.5 pl-3 pr-2 py-[7px] rounded-lg text-[13px] transition-all {selectedGroup === 'URL' ? 'text-white font-medium bg-white/[0.05]' : 'text-white/35 hover:text-white/65 hover:bg-white/[0.04]'}"
+            class="w-full flex items-center gap-2.5 pl-3 pr-2 py-[7px] rounded-lg text-[13px] transition-all {selectedGroup === 'URL' ? 'text-white font-medium bg-white/[0.07]' : 'text-white/52 hover:text-white/80 hover:bg-white/[0.05]'}"
             onclick={() => (selectedGroup = "URL")}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="{selectedGroup === 'URL' ? 'text-[#AEB291]' : 'text-white/25'}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="{selectedGroup === 'URL' ? 'text-[#AEB291]' : 'text-white/38'}">
               <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
             </svg>
             <span class="flex-1 min-w-0 truncate">URLs</span>
             {#if sidebarCounts.url > 0}
-              <span class="text-[10px] text-white/20 tabular-nums shrink-0">{sidebarCounts.url}</span>
+              <span class="text-[10px] text-white/32 tabular-nums shrink-0">{sidebarCounts.url}</span>
             {/if}
           </button>
         </div>
@@ -656,15 +656,15 @@
             <span class="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[18px] bg-[#AEB291] rounded-r-full pointer-events-none" aria-hidden="true"></span>
           {/if}
           <button
-            class="w-full flex items-center gap-2.5 pl-3 pr-2 py-[7px] rounded-lg text-[13px] transition-all {selectedGroup === 'Text' ? 'text-white font-medium bg-white/[0.05]' : 'text-white/35 hover:text-white/65 hover:bg-white/[0.04]'}"
+            class="w-full flex items-center gap-2.5 pl-3 pr-2 py-[7px] rounded-lg text-[13px] transition-all {selectedGroup === 'Text' ? 'text-white font-medium bg-white/[0.07]' : 'text-white/52 hover:text-white/80 hover:bg-white/[0.05]'}"
             onclick={() => (selectedGroup = "Text")}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="{selectedGroup === 'Text' ? 'text-[#AEB291]' : 'text-white/25'}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="{selectedGroup === 'Text' ? 'text-[#AEB291]' : 'text-white/38'}">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
             </svg>
             <span class="flex-1 min-w-0 truncate">Text</span>
             {#if sidebarCounts.text > 0}
-              <span class="text-[10px] text-white/20 tabular-nums shrink-0">{sidebarCounts.text}</span>
+              <span class="text-[10px] text-white/32 tabular-nums shrink-0">{sidebarCounts.text}</span>
             {/if}
           </button>
         </div>
@@ -672,8 +672,8 @@
 
       <!-- Groups section -->
       <div class="flex items-center justify-between px-3 pb-1.5 pt-1">
-        <span class="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/20">Groups</span>
-        <button onclick={() => (isViewingGroups = true)} class="text-white/20 hover:text-[#AEB291] transition-colors" title="Manage groups">
+        <span class="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/38">Groups</span>
+        <button onclick={() => (isViewingGroups = true)} class="text-white/38 hover:text-[#AEB291] transition-colors" title="Manage groups">
           <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
       </div>
@@ -691,22 +691,22 @@
                 onkeydown={(e) => { if (e.key === "Enter") renameGroup(); if (e.key === "Escape") editingGroup = null; }} />
             {:else}
               <button
-                class="flex-1 min-w-0 flex items-center pl-3 pr-1 py-1.5 text-[13px] truncate transition-colors {selectedGroup === group ? 'text-white font-medium' : 'text-white/35 hover:text-white/60'}"
+                class="flex-1 min-w-0 flex items-center pl-3 pr-1 py-1.5 text-[13px] truncate transition-colors {selectedGroup === group ? 'text-white font-medium' : 'text-white/52 hover:text-white/80'}"
                 onclick={() => { selectedGroup = group; }}
               >
                 <span class="block truncate flex-1">{group}</span>
                 {#if sidebarCounts.groups[group] !== undefined && sidebarCounts.groups[group] > 0}
-                  <span class="text-[10px] text-white/18 tabular-nums ml-1.5 shrink-0">{sidebarCounts.groups[group]}</span>
+                  <span class="text-[10px] text-white/30 tabular-nums ml-1.5 shrink-0">{sidebarCounts.groups[group]}</span>
                 {/if}
               </button>
               <div class="flex opacity-0 group-hover/g:opacity-100 pr-0.5 gap-px transition-opacity">
-                <button onclick={() => { editingGroup = group; editGroupName = group; }} class="p-1 text-white/25 hover:text-white/70 rounded transition-colors" title="Rename">
+                <button onclick={() => { editingGroup = group; editGroupName = group; }} class="p-1 text-white/38 hover:text-white/80 rounded transition-colors" title="Rename">
                   <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </button>
-                <button onclick={() => exportGroup(group)} class="p-1 text-white/25 hover:text-white/70 rounded transition-colors" title="Export">
+                <button onclick={() => exportGroup(group)} class="p-1 text-white/38 hover:text-white/80 rounded transition-colors" title="Export">
                   <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 </button>
-                <button onclick={() => deleteGroup(group)} class="p-1 text-white/25 hover:text-[#FF8A3D] rounded transition-colors" title="Delete">
+                <button onclick={() => deleteGroup(group)} class="p-1 text-white/38 hover:text-[#FF8A3D] rounded transition-colors" title="Delete">
                   <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                 </button>
               </div>
@@ -723,12 +723,12 @@
       <div class="px-3 pt-3 pb-2.5">
         <div class="relative flex items-center gap-2">
           <div class="flex-1 relative">
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="absolute left-3 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="absolute left-3 top-1/2 -translate-y-1/2 text-white/35 pointer-events-none">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
             <input type="text" bind:this={searchInput} bind:value={searchQuery}
               placeholder={selectedGroup ? `Search in ${selectedGroup}…` : "Search clips…"}
-              class="w-full bg-white/[0.04] border border-white/[0.06] rounded-xl pl-9 pr-3 py-2.5 text-[13px] text-white/80 focus:outline-none focus:bg-white/[0.06] focus:border-white/[0.1] transition-all placeholder:text-white/18" />
+              class="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl pl-9 pr-3 py-2.5 text-[13px] text-white/85 focus:outline-none focus:bg-white/[0.07] focus:border-white/[0.18] transition-all placeholder:text-white/30" />
           </div>
           {#if selectedGroup}
             <div class="flex items-center gap-1.5 shrink-0 rounded-full bg-white/[0.06] border border-white/[0.08] px-2.5 py-1">
@@ -823,10 +823,10 @@
 
           <!-- ── Time sections ── -->
           {#each ([
-            { key: "today",     label: "Today",     items: groupedHistory.today,     headerColor: "text-white/40" },
-            { key: "yesterday", label: "Yesterday", items: groupedHistory.yesterday, headerColor: "text-white/30" },
-            { key: "thisWeek",  label: "This Week",  items: groupedHistory.thisWeek,  headerColor: "text-white/24" },
-            { key: "older",     label: "Earlier",   items: groupedHistory.older,     headerColor: "text-white/18" },
+            { key: "today",     label: "Today",     items: groupedHistory.today,     headerColor: "text-white/50" },
+            { key: "yesterday", label: "Yesterday", items: groupedHistory.yesterday, headerColor: "text-white/40" },
+            { key: "thisWeek",  label: "This Week",  items: groupedHistory.thisWeek,  headerColor: "text-white/32" },
+            { key: "older",     label: "Earlier",   items: groupedHistory.older,     headerColor: "text-white/26" },
           ]) as section}
             {#if section.items.length > 0}
               <div class="section-header {section.headerColor}">
@@ -841,8 +841,8 @@
                   <div
                     class="group/card relative rounded-xl border transition-all duration-150 cursor-pointer select-none overflow-hidden
                       {isFlashing ? 'bg-green-500/[0.07] border-green-500/[0.3] shadow-lg shadow-green-500/[0.08]' :
-                       isSelected ? 'bg-[#FF8A3D]/[0.07] border-[#FF8A3D]/[0.22] shadow-md shadow-[#FF8A3D]/[0.08]' :
-                                    'bg-white/[0.03] border-white/[0.08] hover:bg-white/[0.045] hover:border-white/[0.12] hover:shadow-lg hover:shadow-black/[0.25] hover:-translate-y-px'}
+                       isSelected ? 'bg-[#FF8A3D]/[0.08] border-[#FF8A3D]/[0.28] shadow-md shadow-[#FF8A3D]/[0.1]' :
+                                    'bg-white/[0.04] border-white/[0.1] hover:bg-white/[0.06] hover:border-white/[0.16] hover:shadow-lg hover:shadow-black/[0.3] hover:-translate-y-px'}
                       active:scale-[0.995] active:translate-y-0"
                     onclick={() => copyItem(item, index)}
                     onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copyItem(item, index); } }}
@@ -891,10 +891,10 @@
       {:else if urlInfo}
         <!-- URL item: domain = small context label, path = primary content -->
         <div class="flex items-center gap-1.5 mb-1.5">
-          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[#AEB291]/45 shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[#AEB291]/62 shrink-0">
             <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
           </svg>
-          <span class="text-[10px] font-semibold text-[#AEB291]/60 uppercase tracking-wider">{urlInfo.domain}</span>
+          <span class="text-[10px] font-semibold text-[#AEB291]/78 uppercase tracking-wider">{urlInfo.domain}</span>
         </div>
         <p class="text-[13px] text-white/75 {urlInfo.path ? 'break-all line-clamp-2' : 'font-medium truncate'} leading-relaxed">
           {urlInfo.path || urlInfo.domain}
@@ -903,7 +903,7 @@
       {:else if codeLang}
         <!-- Code item: language badge + monospace content -->
         <div class="flex items-center gap-2 mb-1.5">
-          <span class="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-[#AEB291]/[0.1] text-[#AEB291]/60 border border-[#AEB291]/[0.15]">{codeLang}</span>
+          <span class="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-[#AEB291]/[0.12] text-[#AEB291]/80 border border-[#AEB291]/[0.22]">{codeLang}</span>
         </div>
         <p class="text-[12px] text-white/60 font-mono leading-relaxed break-all {expandedItems.includes(item.id) ? '' : 'line-clamp-3'} bg-white/[0.02] rounded-lg px-2.5 py-2">
           {clipPreview(item.raw_content, item.content_type)}
@@ -931,25 +931,25 @@
 
     <!-- Action trio (hover / selected) -->
     <div class="flex items-center gap-0.5 shrink-0 self-start transition-opacity {isSelected ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100'}">
-      <button class="p-1.5 rounded-lg transition-all hover:bg-white/[0.06] {item.is_permanent ? 'text-amber-400' : 'text-white/25 hover:text-white/60'}"
+      <button class="p-1.5 rounded-lg transition-all hover:bg-white/[0.07] {item.is_permanent ? 'text-amber-400' : 'text-white/40 hover:text-white/75'}"
         onclick={(e) => { e.stopPropagation(); togglePermanent(item); }} title="Pin">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill={item.is_permanent ? "currentColor" : "none"} stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
           <line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
         </svg>
       </button>
-      <button class="p-1.5 rounded-lg text-white/25 hover:text-[#AEB291] hover:bg-white/[0.06] transition-all"
+      <button class="p-1.5 rounded-lg text-white/40 hover:text-[#AEB291] hover:bg-white/[0.07] transition-all"
         onclick={(e) => { e.stopPropagation(); openEditModal(item); }} title="Edit">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
         </svg>
       </button>
-      <button class="p-1.5 rounded-lg text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+      <button class="p-1.5 rounded-lg text-white/40 hover:text-white/75 hover:bg-white/[0.07] transition-all"
         onclick={(e) => { e.stopPropagation(); categorizingItemId = item.id; newGroupName = ""; isCategorizing = true; }} title="Add to group">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
         </svg>
       </button>
-      <button class="p-1.5 rounded-lg text-white/25 hover:text-[#FF8A3D] hover:bg-[#FF8A3D]/[0.08] transition-all"
+      <button class="p-1.5 rounded-lg text-white/40 hover:text-[#FF8A3D] hover:bg-[#FF8A3D]/[0.1] transition-all"
         onclick={(e) => { e.stopPropagation(); deleteItem(item); }} title="Delete">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
@@ -960,7 +960,7 @@
 {/snippet}
 
 {#snippet cardMeta(item: ClipboardItem, isSelected: boolean, _index: number)}
-  <div class="flex items-center justify-between mt-2 pt-2 border-t border-white/[0.04]">
+  <div class="flex items-center justify-between mt-2 pt-2 border-t border-white/[0.07]">
     <div class="flex items-center gap-1.5 flex-wrap min-w-0">
       <!-- Category icon (only when no other signal) -->
       {#if !item.groups?.length && !item.category && !item.is_manual}
@@ -971,33 +971,33 @@
       <!-- Group / category pills -->
       {#if item.groups && item.groups.length > 0}
         {#each item.groups as grp}
-          <div class="inline-flex items-center rounded-full bg-white/[0.05] border border-white/[0.07] hover:border-[#AEB291]/25 transition-colors overflow-hidden">
+          <div class="inline-flex items-center rounded-full bg-white/[0.07] border border-white/[0.12] hover:border-[#AEB291]/35 transition-colors overflow-hidden">
             <button
-              class="text-[9px] font-semibold uppercase tracking-wide py-0.5 pl-2 {selectedGroup === grp ? 'pr-1' : 'pr-2'} text-white/28 hover:text-[#AEB291] transition-colors"
+              class="text-[9px] font-semibold uppercase tracking-wide py-0.5 pl-2 {selectedGroup === grp ? 'pr-1' : 'pr-2'} text-white/48 hover:text-[#AEB291] transition-colors"
               onclick={(e) => { e.stopPropagation(); selectedGroup = grp; }}
             >{grp}</button>
             {#if selectedGroup === grp}
               <button
                 onclick={(e) => { e.stopPropagation(); removeFromGroup(item, grp); }}
-                class="pr-1.5 text-[11px] leading-none text-white/25 hover:text-[#FF8A3D] transition-colors"
+                class="pr-1.5 text-[11px] leading-none text-white/35 hover:text-[#FF8A3D] transition-colors"
                 title="Remove from group">×</button>
             {/if}
           </div>
         {/each}
       {:else if item.category}
         <button
-          class="text-[9px] font-semibold uppercase tracking-wide py-0.5 px-2 rounded-full bg-white/[0.05] text-white/28 border border-white/[0.07] hover:text-[#AEB291] hover:border-[#AEB291]/25 transition-colors"
+          class="text-[9px] font-semibold uppercase tracking-wide py-0.5 px-2 rounded-full bg-white/[0.07] text-white/48 border border-white/[0.12] hover:text-[#AEB291] hover:border-[#AEB291]/35 transition-colors"
           onclick={(e) => { e.stopPropagation(); selectedGroup = item.category; }}
         >{item.category}</button>
       {/if}
       {#if item.is_manual}
-        <span class="text-[9px] font-semibold uppercase tracking-wide py-0.5 px-2 rounded-full bg-[#FF8A3D]/[0.08] text-[#FF8A3D]/50 border border-[#FF8A3D]/[0.12]">manual</span>
+        <span class="text-[9px] font-semibold uppercase tracking-wide py-0.5 px-2 rounded-full bg-[#FF8A3D]/[0.1] text-[#FF8A3D]/68 border border-[#FF8A3D]/[0.2]">manual</span>
       {/if}
       <!-- Relative time -->
-      <span class="text-[10px] text-white/18">{relativeTime(item.created_at)}</span>
+      <span class="text-[10px] text-white/32">{relativeTime(item.created_at)}</span>
     </div>
     <!-- Copy icon (appears on hover / selected) -->
-    <div class="shrink-0 ml-2 transition-all {isSelected ? 'opacity-100 text-[#FF8A3D]/60' : 'opacity-0 group-hover/card:opacity-100 text-white/25 group-hover/card:text-white/45'}">
+    <div class="shrink-0 ml-2 transition-all {isSelected ? 'opacity-100 text-[#FF8A3D]/70' : 'opacity-0 group-hover/card:opacity-100 text-white/35 group-hover/card:text-white/58'}">
       <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
       </svg>
