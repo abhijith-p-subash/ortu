@@ -802,7 +802,7 @@
                      isSelected ? 'bg-[#FF8A3D]/[0.07] border-[#FF8A3D]/[0.22] shadow-md shadow-[#FF8A3D]/[0.08]' :
                                   'bg-amber-400/[0.03] border-amber-400/[0.12] hover:bg-amber-400/[0.05] hover:border-amber-400/[0.18] hover:shadow-lg hover:shadow-black/[0.25] hover:-translate-y-px'}
                     active:scale-[0.995] active:translate-y-0"
-                  onclick={() => copyItem(item, index)}
+                  onclick={() => { selectedIndex = index; }}
                   onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copyItem(item, index); } }}
                   role="button" tabindex="0" data-index={index}
                 >
@@ -959,7 +959,7 @@
   </div>
 {/snippet}
 
-{#snippet cardMeta(item: ClipboardItem, isSelected: boolean, _index: number)}
+{#snippet cardMeta(item: ClipboardItem, isSelected: boolean, index: number)}
   <div class="flex items-center justify-between mt-2 pt-2 border-t border-white/[0.07]">
     <div class="flex items-center gap-1.5 flex-wrap min-w-0">
       <!-- Category icon (only when no other signal) -->
@@ -996,12 +996,16 @@
       <!-- Relative time -->
       <span class="text-[10px] text-white/32">{relativeTime(item.created_at)}</span>
     </div>
-    <!-- Copy icon (appears on hover / selected) -->
-    <div class="shrink-0 ml-2 transition-all {isSelected ? 'opacity-100 text-[#FF8A3D]/70' : 'opacity-0 group-hover/card:opacity-100 text-white/35 group-hover/card:text-white/58'}">
+    <!-- Copy button (the only way to copy in the main window) -->
+    <button
+      onclick={(e) => { e.stopPropagation(); copyItem(item, index); }}
+      title="Copy"
+      class="shrink-0 ml-2 p-1 rounded-md transition-all {isSelected ? 'opacity-100 text-[#FF8A3D]/80 hover:text-[#FF8A3D] hover:bg-[#FF8A3D]/[0.1]' : 'opacity-0 group-hover/card:opacity-100 text-white/40 group-hover/card:text-white/65 hover:bg-white/[0.07]'}"
+    >
       <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
       </svg>
-    </div>
+    </button>
   </div>
 {/snippet}
 
