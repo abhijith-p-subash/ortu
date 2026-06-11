@@ -731,27 +731,44 @@ impl ClipboardDB {
 
     pub fn find_similar_category(&self, content: &str) -> Result<Option<String>> {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        // Simple logic: find items that share the first 10-15 characters if it's a command
         if content.len() < 5 {
             return Ok(None);
         }
 
-        // Match on prefix of first word
         let first_word = content.split_whitespace().next().unwrap_or("");
         if first_word.is_empty() {
             return Ok(None);
         }
 
+        let pattern = format!("{}%", first_word);
+
+        // Prefer user-defined groups associated with similar items (most common wins)
         let mut stmt = conn.prepare(
-            "SELECT category FROM history 
-             WHERE category IS NOT NULL AND raw_content LIKE ?1 
+            "SELECT g.name, COUNT(*) AS cnt
+             FROM history h
+             JOIN item_groups ig ON h.id = ig.item_id
+             JOIN groups g ON ig.group_id = g.id
+             WHERE h.raw_content LIKE ?1 AND g.is_system = 0
+             GROUP BY g.name
+             ORDER BY cnt DESC
              LIMIT 1",
         )?;
-        let pattern = format!("{}%", first_word);
         let mut rows = stmt.query(params![pattern])?;
         if let Some(row) = rows.next()? {
             return Ok(Some(row.get(0)?));
         }
+
+        // Fallback: legacy category column
+        let mut stmt2 = conn.prepare(
+            "SELECT category FROM history
+             WHERE category IS NOT NULL AND raw_content LIKE ?1
+             LIMIT 1",
+        )?;
+        let mut rows2 = stmt2.query(params![pattern])?;
+        if let Some(row) = rows2.next()? {
+            return Ok(Some(row.get(0)?));
+        }
+
         Ok(None)
     }
 
