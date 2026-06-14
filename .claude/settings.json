@@ -4,7 +4,16 @@
       "Bash(npm run *)",
       "Bash(cargo check *)",
       "Bash(cargo build *)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(cat capabilities/*.json)",
+      "Bash(cat src/lib.rs)",
+      "Bash(npx tauri *)",
+      "Bash(mkdir -p ~/.tauri && npx tauri signer generate -w ~/.tauri/ortu_updater.key --password \"\" 2>&1 | tail -30)",
+      "Bash(npm install *)",
+      "Bash(gh auth *)"
+    ],
+    "additionalDirectories": [
+      "/Users/abhijithpsubash"
     ]
   }
 }

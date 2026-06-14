@@ -7,6 +7,8 @@
   import { platform } from "@tauri-apps/plugin-os";
   import { getVersion } from "@tauri-apps/api/app";
   import { buildSearchQuery, clipPreview } from "$lib/filters";
+  import { checkForUpdates as runUpdateCheck, getOsInstallerUrl } from "$lib/updater";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import "../app.css";
 
   // ── Core state ─────────────────────────────────────────
@@ -45,6 +47,8 @@
   let showMoreMenu = $state(false);
   let updateAvailable = $state(false);
   let latestVersion = $state("");
+  let updateInstalling = $state(false);
+  let updateProgress = $state(-1); // -1 = indeterminate, 0–100 = percent
   let releaseUrl = $state("https://github.com/abhijith-p-subash/ortu/releases/latest");
   let showAddItemModal = $state(false);
   let newItemContent = $state("");
@@ -206,22 +210,55 @@
     showImportModal = true;
   }
 
-  // ── Version check ──────────────────────────────────────
+  // ── Auto-update (Tauri updater plugin) ─────────────────
 
-  async function checkForUpdates() {
+  // Detect a newer signed release and surface the banner. Install is deferred
+  // to a user click so we never restart the app from under them unexpectedly.
+  async function checkForUpdates(silent = true) {
+    await runUpdateCheck({
+      onAvailable: (version) => {
+        latestVersion = version;
+        updateAvailable = true;
+        return false; // show banner; download happens in installUpdate()
+      },
+      onUpToDate: () => { if (!silent) showToast("Ortu is up to date", "success"); },
+      onError: (e) => {
+        console.error("Update check failed:", e);
+        if (!silent) showToast("Couldn't check for updates", "error");
+      },
+    });
+  }
+
+  // Download, verify, install the update, then relaunch.
+  async function installUpdate() {
+    if (updateInstalling) return;
+    updateInstalling = true;
+    updateProgress = -1;
+    await runUpdateCheck({
+      onAvailable: () => true,
+      onProgress: (downloaded, total) => {
+        updateProgress = total ? Math.round((downloaded / total) * 100) : -1;
+      },
+      onReadyToRestart: () => true,
+      onUpToDate: () => { updateAvailable = false; showToast("Already up to date", "info"); },
+      onError: (e) => {
+        console.error("Update install failed:", e);
+        showToast("Update failed — download it manually instead", "error");
+      },
+    });
+    updateInstalling = false;
+  }
+
+  // Fallback: open the OS-specific installer (.dmg / -setup.exe / .AppImage) in
+  // the browser, in case the in-app updater can't run.
+  async function manualDownload() {
     try {
-      const res = await fetch("https://api.github.com/repos/abhijith-p-subash/ortu/releases/latest");
-      if (!res.ok) return;
-      const data = await res.json();
-      const latest = (data.tag_name as string)?.replace(/^v/, "");
-      if (!latest || latest === appVersion) return;
-      const cur = appVersion.split(".").map(Number);
-      const rem = latest.split(".").map(Number);
-      if (rem[0] > cur[0] || (rem[0]===cur[0] && rem[1]>cur[1]) || (rem[0]===cur[0] && rem[1]===cur[1] && (rem[2]??0)>(cur[2]??0))) {
-        updateAvailable = true; latestVersion = latest;
-        releaseUrl = (data.html_url as string) ?? releaseUrl;
-      }
-    } catch { /* silently ignore */ }
+      const url = await getOsInstallerUrl();
+      await openUrl(url);
+    } catch (e) {
+      console.error("Manual download failed:", e);
+      await openUrl(releaseUrl);
+    }
   }
 
   // ── Group management ───────────────────────────────────
@@ -572,12 +609,19 @@
   <!-- ── Banners ───────────────────────────────────────── -->
   {#if updateAvailable}
     <div class="mx-3 mt-2 flex items-center justify-between rounded-lg bg-[#AEB291]/[0.07] border border-[#AEB291]/[0.15] px-3 py-2">
-      <p class="text-[11px] text-white/50"><span class="font-semibold text-white/80">v{latestVersion}</span> is available</p>
+      <p class="text-[11px] text-white/50">
+        <span class="font-semibold text-white/80">v{latestVersion}</span> is available{#if updateInstalling} · {updateProgress < 0 ? "downloading…" : `${updateProgress}%`}{/if}
+      </p>
       <div class="flex items-center gap-3 shrink-0">
-        <a href={releaseUrl} target="_blank" rel="noopener noreferrer" class="text-[11px] font-semibold text-[#AEB291] hover:text-white transition-colors">Download →</a>
-        <button onclick={() => (updateAvailable = false)} aria-label="Dismiss" class="text-white/25 hover:text-white/60 transition-colors">
-          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+        {#if updateInstalling}
+          <span class="text-[11px] font-semibold text-[#AEB291]">Installing…</span>
+        {:else}
+          <button onclick={installUpdate} class="text-[11px] font-semibold text-[#AEB291] hover:text-white transition-colors">Update &amp; Restart →</button>
+          <button onclick={manualDownload} class="text-[11px] text-white/30 hover:text-white/60 transition-colors">Manual</button>
+          <button onclick={() => (updateAvailable = false)} aria-label="Dismiss" class="text-white/25 hover:text-white/60 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        {/if}
       </div>
     </div>
   {/if}
