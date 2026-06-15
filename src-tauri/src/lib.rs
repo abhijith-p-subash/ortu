@@ -231,6 +231,8 @@ pub fn run() {
             commands::import_group,
             commands::paste_item,
             commands::copy_item_to_clipboard,
+            commands::get_image_thumbnail,
+            commands::get_file_thumbnail,
             commands::copy_item_and_paste,
             commands::copy_item_and_paste_from_popup,
             commands::get_macos_accessibility_status,
@@ -528,4 +530,94 @@ fn get_frontmost_app_bundle_id_macos() -> Option<String> {
         }
         Some(CStr::from_ptr(ptr).to_string_lossy().into_owned())
     }
+}
+
+/// Reads file paths currently on the clipboard (macOS). Returns None when the
+/// clipboard holds no file selection.
+#[cfg(target_os = "macos")]
+pub(crate) fn read_clipboard_file_paths() -> Option<Vec<String>> {
+    unsafe {
+        let pool: id = msg_send![class!(NSAutoreleasePool), new];
+        let result = (|| {
+            let pb: id = msg_send![class!(NSPasteboard), generalPasteboard];
+            if pb == nil {
+                return None;
+            }
+            let cflag = std::ffi::CString::new("NSFilenamesPboardType").ok()?;
+            let ftype: id = msg_send![class!(NSString), stringWithUTF8String: cflag.as_ptr()];
+            let plist: id = msg_send![pb, propertyListForType: ftype];
+            if plist == nil {
+                return None;
+            }
+            let count: usize = msg_send![plist, count];
+            if count == 0 {
+                return None;
+            }
+            let mut paths = Vec::with_capacity(count);
+            for i in 0..count {
+                let s: id = msg_send![plist, objectAtIndex: i];
+                if s == nil {
+                    continue;
+                }
+                let ptr: *const c_char = msg_send![s, UTF8String];
+                if ptr.is_null() {
+                    continue;
+                }
+                paths.push(CStr::from_ptr(ptr).to_string_lossy().into_owned());
+            }
+            if paths.is_empty() {
+                None
+            } else {
+                Some(paths)
+            }
+        })();
+        let _: () = msg_send![pool, drain];
+        result
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn read_clipboard_file_paths() -> Option<Vec<String>> {
+    None
+}
+
+/// Writes the given file paths to the clipboard as file URLs (macOS), so a
+/// subsequent paste in Finder or other apps pastes the actual files.
+#[cfg(target_os = "macos")]
+pub(crate) fn write_clipboard_file_paths(paths: &[String]) -> bool {
+    unsafe {
+        let pool: id = msg_send![class!(NSAutoreleasePool), new];
+        let ok = (|| {
+            let pb: id = msg_send![class!(NSPasteboard), generalPasteboard];
+            if pb == nil {
+                return false;
+            }
+            let _: () = msg_send![pb, clearContents];
+            let array: id = msg_send![class!(NSMutableArray), array];
+            for p in paths {
+                let cstr = match std::ffi::CString::new(p.as_str()) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let ns_path: id = msg_send![class!(NSString), stringWithUTF8String: cstr.as_ptr()];
+                let url: id = msg_send![class!(NSURL), fileURLWithPath: ns_path];
+                if url != nil {
+                    let _: () = msg_send![array, addObject: url];
+                }
+            }
+            let count: usize = msg_send![array, count];
+            if count == 0 {
+                return false;
+            }
+            let wrote: bool = msg_send![pb, writeObjects: array];
+            wrote
+        })();
+        let _: () = msg_send![pool, drain];
+        ok
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn write_clipboard_file_paths(_paths: &[String]) -> bool {
+    false
 }

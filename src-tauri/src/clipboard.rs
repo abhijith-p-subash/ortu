@@ -1,11 +1,93 @@
 use crate::db::ClipboardDB;
 use arboard::Clipboard;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::io::Cursor;
 use std::thread;
 use std::time::Duration;
 use tauri::AppHandle;
 use tauri::Emitter;
 use tauri::Manager;
+
+/// SHA-256 of bytes as lowercase hex; used to content-address images.
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+/// Encodes a clipboard image to PNG (+ thumbnail), stores it in the blob table,
+/// and records a history row referencing it by hash.
+fn store_image(db: &ClipboardDB, img: arboard::ImageData, hash: &str) -> Result<(), String> {
+    let width = img.width as u32;
+    let height = img.height as u32;
+    let rgba = image::RgbaImage::from_raw(width, height, img.bytes.into_owned())
+        .ok_or_else(|| "invalid image buffer".to_string())?;
+    let dynimg = image::DynamicImage::ImageRgba8(rgba);
+
+    let mut png = Vec::new();
+    dynimg
+        .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    let mut thumb = Vec::new();
+    dynimg
+        .thumbnail(240, 240)
+        .write_to(&mut Cursor::new(&mut thumb), image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+
+    db.insert_blob(hash, "image/png", &png, Some(&thumb)).map_err(|e| e.to_string())?;
+    db.insert_auto_grouped_content("image", hash.to_string(), vec![("Images".to_string(), 1.0)])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Captures an image from the clipboard when no text/files are present.
+fn try_capture_image(app: &AppHandle, last_signature: &mut String, clipboard: &mut Clipboard) -> bool {
+    let img = match clipboard.get_image() {
+        Ok(i) => i,
+        Err(_) => return false,
+    };
+    if img.bytes.is_empty() || img.bytes.len() > 40 * 1024 * 1024 {
+        return false;
+    }
+    let hash = sha256_hex(&img.bytes);
+    let signature = format!("image:{}", hash);
+    if signature == *last_signature {
+        return false;
+    }
+    if let Some(db) = app.try_state::<ClipboardDB>() {
+        if store_image(db.inner(), img, &hash).is_ok() {
+            *last_signature = signature;
+            let _ = app.emit("clipboard-updated", ());
+            return true;
+        }
+    }
+    false
+}
+
+/// Captures a file selection from the clipboard (macOS). Returns true when file
+/// paths are present on the clipboard, so the caller skips text/image handling.
+fn try_capture_files(app: &AppHandle, last_signature: &mut String) -> bool {
+    let paths = match crate::read_clipboard_file_paths() {
+        Some(p) if !p.is_empty() => p,
+        _ => return false,
+    };
+    let signature = format!("files:{}", paths.join("\u{0}"));
+    if signature != *last_signature {
+        if let Some(db) = app.try_state::<ClipboardDB>() {
+            let json = serde_json::to_string(&paths).unwrap_or_default();
+            if !json.is_empty()
+                && db
+                    .insert_auto_grouped_content("files", json, vec![("Files".to_string(), 1.0)])
+                    .is_ok()
+            {
+                *last_signature = signature;
+                let _ = app.emit("clipboard-updated", ());
+            }
+        }
+    }
+    true
+}
 
 fn add_score(scores: &mut HashMap<String, f32>, group: &str, score: f32) {
     let entry = scores.entry(group.to_string()).or_insert(0.0);
@@ -348,9 +430,19 @@ pub fn start_listener(app: AppHandle) {
         loop {
             thread::sleep(Duration::from_millis(350));
 
+            // 1. File selection (macOS) — handled before text so a Finder copy
+            //    isn't mistaken for its text path representation.
+            if try_capture_files(&app, &mut last_signature) {
+                continue;
+            }
+
+            // 2. Text — or fall through to image capture when there is none.
             let text = match clipboard.get_text() {
                 Ok(t) if !t.trim().is_empty() => t,
-                _ => continue,
+                _ => {
+                    try_capture_image(&app, &mut last_signature, &mut clipboard);
+                    continue;
+                }
             };
             if text.len() > 50 * 1024 * 1024 {
                 continue;

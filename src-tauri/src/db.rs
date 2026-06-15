@@ -181,6 +181,20 @@ impl ClipboardDB {
             [],
         )?;
 
+        // Content-addressed binary store for clipboard images. A history row of
+        // content_type 'image' references a blob by storing its hash in
+        // raw_content; identical images are deduplicated by hash.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS blobs (
+                hash TEXT PRIMARY KEY,
+                mime TEXT NOT NULL,
+                data BLOB NOT NULL,
+                thumb BLOB,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )",
+            [],
+        )?;
+
         // Migrate: add description and is_manual columns if not present
         let _ = conn.execute("ALTER TABLE history ADD COLUMN description TEXT", []);
         let _ = conn.execute("ALTER TABLE history ADD COLUMN is_manual BOOLEAN DEFAULT 0", []);
@@ -864,6 +878,7 @@ impl ClipboardDB {
     pub fn delete_item(&self, id: i64) -> Result<()> {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM history WHERE id = ?1", params![id])?;
+        let _ = Self::prune_orphan_blobs(&conn);
         Ok(())
     }
 
@@ -874,6 +889,48 @@ impl ClipboardDB {
             params![id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
+    }
+
+    // --- Image blob store ---
+
+    /// Stores image bytes (+ optional thumbnail) keyed by content hash. No-op if
+    /// the hash already exists (content-addressed dedup).
+    pub fn insert_blob(&self, hash: &str, mime: &str, data: &[u8], thumb: Option<&[u8]>) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "INSERT OR IGNORE INTO blobs (hash, mime, data, thumb) VALUES (?1, ?2, ?3, ?4)",
+            params![hash, mime, data, thumb],
+        )?;
+        Ok(())
+    }
+
+    /// Full binary payload for a blob hash.
+    pub fn get_blob(&self, hash: &str) -> Result<Vec<u8>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.query_row("SELECT data FROM blobs WHERE hash = ?1", params![hash], |row| {
+            row.get(0)
+        })
+    }
+
+    /// Thumbnail for a blob hash, falling back to the full data.
+    pub fn get_blob_thumb(&self, hash: &str) -> Result<Vec<u8>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.query_row(
+            "SELECT COALESCE(thumb, data) FROM blobs WHERE hash = ?1",
+            params![hash],
+            |row| row.get(0),
+        )
+    }
+
+    /// Removes blobs no longer referenced by any image history row.
+    fn prune_orphan_blobs(conn: &Connection) -> Result<()> {
+        conn.execute(
+            "DELETE FROM blobs WHERE hash NOT IN (
+                 SELECT raw_content FROM history WHERE content_type = 'image'
+             )",
+            [],
+        )?;
+        Ok(())
     }
 
     pub fn toggle_permanent(&self, id: i64) -> Result<()> {

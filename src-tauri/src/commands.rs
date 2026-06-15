@@ -339,12 +339,81 @@ pub fn copy_item_to_clipboard(app: AppHandle, id: i64) -> Result<(), String> {
     use arboard::Clipboard;
 
     let db = app.state::<ClipboardDB>();
-    let (_content_type, raw_content) = db.get_item_payload(id).map_err(|e| e.to_string())?;
+    let (content_type, raw_content) = db.get_item_payload(id).map_err(|e| e.to_string())?;
 
-    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-    clipboard.set_text(raw_content).map_err(|e| e.to_string())?;
+    match content_type.as_str() {
+        "image" => {
+            // raw_content is the blob hash; decode the stored PNG back to RGBA.
+            let png = db.get_blob(&raw_content).map_err(|e| e.to_string())?;
+            let rgba = image::load_from_memory(&png)
+                .map_err(|e| e.to_string())?
+                .to_rgba8();
+            let (width, height) = rgba.dimensions();
+            let data = arboard::ImageData {
+                width: width as usize,
+                height: height as usize,
+                bytes: std::borrow::Cow::Owned(rgba.into_raw()),
+            };
+            let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+            clipboard.set_image(data).map_err(|e| e.to_string())?;
+        }
+        "files" => {
+            // raw_content is a JSON array of file paths; restore them as file
+            // URLs so paste targets receive the actual files.
+            let paths: Vec<String> =
+                serde_json::from_str(&raw_content).map_err(|e| e.to_string())?;
+            if !crate::write_clipboard_file_paths(&paths) {
+                // Fallback (non-macOS or failure): copy the paths as text.
+                let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+                clipboard.set_text(paths.join("\n")).map_err(|e| e.to_string())?;
+            }
+        }
+        _ => {
+            let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+            clipboard.set_text(raw_content).map_err(|e| e.to_string())?;
+        }
+    }
 
     Ok(())
+}
+
+/// Returns a base64 PNG data URL for an image item's thumbnail, for UI display.
+#[tauri::command]
+pub fn get_image_thumbnail(app: AppHandle, id: i64) -> Result<String, String> {
+    let db = app.state::<ClipboardDB>();
+    let (content_type, raw_content) = db.get_item_payload(id).map_err(|e| e.to_string())?;
+    if content_type != "image" {
+        return Err("not an image item".to_string());
+    }
+    let thumb = db.get_blob_thumb(&raw_content).map_err(|e| e.to_string())?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&thumb);
+    Ok(format!("data:image/png;base64,{}", b64))
+}
+
+/// Generates a thumbnail for an image file on disk (used to preview image files
+/// captured from the clipboard). Errors for non-image files so the UI can fall
+/// back to a generic file icon.
+#[tauri::command]
+pub fn get_file_thumbnail(path: String) -> Result<String, String> {
+    let lower = path.to_lowercase();
+    let is_image = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]
+        .iter()
+        .any(|ext| lower.ends_with(ext));
+    if !is_image {
+        return Err("not a supported image file".to_string());
+    }
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    if meta.len() > 40 * 1024 * 1024 {
+        return Err("file too large".to_string());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+    let mut thumb = Vec::new();
+    img.thumbnail(240, 240)
+        .write_to(&mut std::io::Cursor::new(&mut thumb), image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&thumb);
+    Ok(format!("data:image/png;base64,{}", b64))
 }
 
 #[tauri::command]

@@ -41,6 +41,9 @@ enigo = "0.2"
 sysinfo = "0.37"
 base64 = "0.22"
 urlencoding = "2.1"
+# Image clipboard support: encode/decode common formats + thumbnails, content hashing for dedup.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+sha2 = "0.10"
 
 # The updater is desktop-only; keep it out of any future mobile build.
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]

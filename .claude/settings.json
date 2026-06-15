@@ -10,7 +10,17 @@
       "Bash(npx tauri *)",
       "Bash(mkdir -p ~/.tauri && npx tauri signer generate -w ~/.tauri/ortu_updater.key --password \"\" 2>&1 | tail -30)",
       "Bash(npm install *)",
-      "Bash(gh auth *)"
+      "Bash(gh auth *)",
+      "Bash(exit 1)",
+      "Bash(pkill -9 -f \"target/debug/Ortu\")",
+      "Bash(pkill -9 -f \"/Applications/Ortu.app\")",
+      "Bash(mv -f ortu.db ortu.db.encrypted-bak)",
+      "Bash(mv -f .db_key db_key.testing-bak)",
+      "Bash(grep -n 'let history = $state\\\\|async function loadHistory\\\\|history = data\\\\|snippet cardContent\\\\|{#if item.description}' src/routes/+page.svelte)",
+      "Read(//tmp/**)",
+      "Read(//private/tmp/**)",
+      "Bash(screencapture -x -R330,70,560,470 /tmp/h3.png)",
+      "Bash(sips -Z 1300 /tmp/h3.png --out /tmp/h3_z.png)"
     ],
     "additionalDirectories": [
       "/Users/abhijithpsubash"

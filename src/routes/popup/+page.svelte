@@ -17,6 +17,40 @@
   let currentCategory = $state<string | null>(null);
   let showGroupSelector = $state<number | null>(null);
   let newGroupName = $state("");
+  let thumbCache = $state<Record<number, string>>({}); // image id → data URL
+  let fileThumbCache = $state<Record<string, string>>({}); // file path → data URL (image files)
+  const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
+  function isImagePath(p: string): boolean { return IMAGE_EXT.test(p); }
+  function parseFiles(raw: string): string[] {
+    try { const a = JSON.parse(raw); return Array.isArray(a) ? a : []; } catch { return []; }
+  }
+  function baseName(p: string): string { return p.replace(/\/+$/, "").split("/").pop() || p; }
+  function fileExt(p: string): string {
+    const name = baseName(p);
+    const i = name.lastIndexOf(".");
+    if (i <= 0 || i === name.length - 1) return "FILE";
+    return name.slice(i + 1).toUpperCase().slice(0, 4);
+  }
+
+  async function loadThumbnails(items: ClipboardItem[]) {
+    for (const item of items) {
+      if (item.content_type === "image" && !thumbCache[item.id]) {
+        try {
+          const url = (await invoke("get_image_thumbnail", { id: item.id })) as string;
+          thumbCache = { ...thumbCache, [item.id]: url };
+        } catch { /* thumbnail unavailable */ }
+      } else if (item.content_type === "files") {
+        for (const f of parseFiles(item.raw_content)) {
+          if (isImagePath(f) && !(f in fileThumbCache)) {
+            try {
+              const url = (await invoke("get_file_thumbnail", { path: f })) as string;
+              fileThumbCache = { ...fileThumbCache, [f]: url };
+            } catch { fileThumbCache = { ...fileThumbCache, [f]: "" }; }
+          }
+        }
+      }
+    }
+  }
   let hoverPreview = $state<{
     itemId: number; content: string; x: number; y: number; category: string | null;
   } | null>(null);
@@ -37,6 +71,7 @@
       const catData = (await invoke("get_categories")) as string[];
       history = historyData;
       categories = catData;
+      loadThumbnails(historyData);
       const total = history.length + (currentCategory ? 0 : filteredCategories.length);
       if (selectedIndex >= total) selectedIndex = Math.max(0, total - 1);
     } catch (e) { console.error("Failed to load data:", e); }
@@ -318,7 +353,26 @@
 
         <!-- Content — description label + content -->
         <div class="min-w-0 flex-1 overflow-hidden">
-          {#if isSelected}
+          {#if item.content_type === "image"}
+            {#if thumbCache[item.id]}
+              <img src={thumbCache[item.id]} alt="Clipboard contents" class="{isSelected ? 'max-h-20' : 'max-h-10'} max-w-full rounded border border-white/[0.1] object-contain bg-black/20" />
+            {:else}
+              <span class="text-[13px] text-white/55">[Image]</span>
+            {/if}
+          {:else if item.content_type === "files"}
+            <div class="flex flex-col gap-1.5">
+              {#each parseFiles(item.raw_content) as f}
+                <div class="flex items-center gap-2 min-w-0" title={f}>
+                  {#if isImagePath(f) && fileThumbCache[f]}
+                    <img src={fileThumbCache[f]} alt="" class="{isSelected ? 'h-11 w-11' : 'h-9 w-9'} rounded-md object-cover border border-white/[0.1] shrink-0 bg-black/20" />
+                  {:else}
+                    <span class="flex items-center justify-center {isSelected ? 'h-11 w-11' : 'h-9 w-9'} rounded-md bg-white/[0.06] border border-white/[0.1] text-[9px] font-bold uppercase tracking-wide text-[#AEB291]/85 shrink-0">{fileExt(f)}</span>
+                  {/if}
+                  <span class="text-[13px] text-white/65 truncate">{baseName(f)}</span>
+                </div>
+              {/each}
+            </div>
+          {:else if isSelected}
             <!-- Expanded: description on its own line, content up to 3 lines -->
             {#if item.description}
               <p class="text-[10px] font-semibold text-[#AEB291]/70 truncate mb-0.5 tracking-tight">{item.description}</p>

@@ -178,6 +178,44 @@
 
   // ── Data loading ───────────────────────────────────────
 
+  // ── Image thumbnails / file helpers ─────────────────────
+  let thumbCache = $state<Record<number, string>>({}); // image id → data URL
+  let fileThumbCache = $state<Record<string, string>>({}); // file path → data URL (image files)
+  const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
+  function isImagePath(p: string): boolean { return IMAGE_EXT.test(p); }
+
+  async function loadThumbnails(items: ClipboardItem[]) {
+    for (const item of items) {
+      if (item.content_type === "image" && !thumbCache[item.id]) {
+        try {
+          const url = (await invoke("get_image_thumbnail", { id: item.id })) as string;
+          thumbCache = { ...thumbCache, [item.id]: url };
+        } catch { /* thumbnail unavailable */ }
+      } else if (item.content_type === "files") {
+        for (const f of parseFiles(item.raw_content)) {
+          if (isImagePath(f) && !(f in fileThumbCache)) {
+            try {
+              const url = (await invoke("get_file_thumbnail", { path: f })) as string;
+              fileThumbCache = { ...fileThumbCache, [f]: url };
+            } catch { fileThumbCache = { ...fileThumbCache, [f]: "" }; } // mark attempted
+          }
+        }
+      }
+    }
+  }
+
+  function parseFiles(raw: string): string[] {
+    try { const a = JSON.parse(raw); return Array.isArray(a) ? a : []; }
+    catch { return []; }
+  }
+  function baseName(p: string): string { return p.replace(/\/+$/, "").split("/").pop() || p; }
+  function fileExt(p: string): string {
+    const name = baseName(p);
+    const i = name.lastIndexOf(".");
+    if (i <= 0 || i === name.length - 1) return "FILE";
+    return name.slice(i + 1).toUpperCase().slice(0, 4);
+  }
+
   async function loadHistory() {
     try {
       const search = selectedGroup
@@ -186,6 +224,7 @@
       const data = (await invoke("get_history", { search: search || null })) as ClipboardItem[];
       history = data;
       if (selectedIndex >= history.length) selectedIndex = Math.max(0, history.length - 1);
+      loadThumbnails(data);
     } catch (e) { console.error("Failed to load history:", e); }
   }
 
@@ -927,7 +966,33 @@
   <div class="flex items-start gap-2 min-w-0">
     <div class="min-w-0 flex-1">
 
-      {#if item.description}
+      {#if item.content_type === "image"}
+        <!-- Image item: thumbnail -->
+        {#if thumbCache[item.id]}
+          <img src={thumbCache[item.id]} alt="Clipboard contents" class="max-h-28 max-w-full rounded-lg border border-white/[0.08] object-contain bg-black/20" />
+        {:else}
+          <div class="flex items-center gap-2 text-white/40 text-[12px] py-3">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Image
+          </div>
+        {/if}
+
+      {:else if item.content_type === "files"}
+        <!-- File selection: image files show a thumbnail, others an extension badge -->
+        <div class="flex flex-col gap-2">
+          {#each parseFiles(item.raw_content) as f}
+            <div class="flex items-center gap-2.5 min-w-0" title={f}>
+              {#if isImagePath(f) && fileThumbCache[f]}
+                <img src={fileThumbCache[f]} alt="" class="h-14 w-14 rounded-md object-cover border border-white/[0.08] shrink-0 bg-black/20" />
+              {:else}
+                <span class="flex items-center justify-center h-14 w-14 rounded-md bg-white/[0.05] border border-white/[0.08] text-[10px] font-bold uppercase tracking-wide text-[#AEB291]/85 shrink-0">{fileExt(f)}</span>
+              {/if}
+              <span class="text-[13px] text-white/70 truncate">{baseName(f)}</span>
+            </div>
+          {/each}
+        </div>
+
+      {:else if item.description}
         <!-- content is primary; description is a small secondary label -->
         <p class="text-[13px] text-white/80 {expandedItems.includes(item.id) ? '' : 'line-clamp-2'} leading-relaxed break-words mb-1">{item.raw_content}</p>
         <p class="text-[10px] text-white/30 truncate">{item.description}</p>
