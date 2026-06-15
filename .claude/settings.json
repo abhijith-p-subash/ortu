@@ -20,7 +20,22 @@
       "Read(//tmp/**)",
       "Read(//private/tmp/**)",
       "Bash(screencapture -x -R330,70,560,470 /tmp/h3.png)",
-      "Bash(sips -Z 1300 /tmp/h3.png --out /tmp/h3_z.png)"
+      "Bash(sips -Z 1300 /tmp/h3.png --out /tmp/h3_z.png)",
+      "Bash(screencapture -x -R235,73,1000,130 /tmp/th_hdr.png)",
+      "Bash(sips -Z 1500 /tmp/th_hdr.png --out /tmp/th_hdr_z.png)",
+      "Bash(python3 -c \"import Quartz; print\\('quartz ok'\\)\")",
+      "Bash(perl -e 'select\\(undef,undef,undef,0.6\\)')",
+      "Bash(screencapture -x -R235,73,1000,400 /tmp/menu.png)",
+      "Bash(sips -Z 1100 /tmp/menu.png --out /tmp/menu_z.png)",
+      "Bash(osascript -e 'tell application \"System Events\" to tell process \"Ortu\" *)",
+      "Bash(swift /tmp/click.swift 1204 119)",
+      "Bash(swift /tmp/click.swift 1120 248)",
+      "Bash(perl -e 'select\\(undef,undef,undef,0.7\\)')",
+      "Bash(screencapture -x -R235,73,1000,700 /tmp/settings.png)",
+      "Bash(perl -e 'select\\(undef,undef,undef,0.5\\)')",
+      "Bash(swift /tmp/click.swift 888 438)",
+      "Bash(screencapture -x -R235,73,1000,700 /tmp/dark_after.png)",
+      "Bash(sips -Z 1100 /tmp/dark_after.png --out /tmp/dark_after_z.png)"
     ],
     "additionalDirectories": [
       "/Users/abhijithpsubash"

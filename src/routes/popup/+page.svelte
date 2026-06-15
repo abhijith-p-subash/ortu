@@ -4,6 +4,7 @@
   import type { ClipboardItem } from "$lib/types";
   import { listen } from "@tauri-apps/api/event";
   import { buildSearchQuery, clipPreview } from "$lib/filters";
+  import { applyTheme, getStoredTheme } from "$lib/theme";
   import "../../app.css";
 
   let history = $state<ClipboardItem[]>([]);
@@ -210,6 +211,7 @@
     const setupListeners = async () => {
       try {
         const unFocus = await listen("tauri://focus", () => {
+          applyTheme(getStoredTheme()); // pick up theme changes made in the main window
           currentCategory = null; searchQuery = ""; selectedIndex = 0; hoverPreview = null;
           loadData();
           tick().then(() => {
@@ -247,12 +249,12 @@
 ───────────────────────────────────────────────── -->
 <div
   bind:this={shell}
-  class="popup-shell flex flex-col h-screen bg-[#0e1014]/[0.97] text-[#c8cdd4] overflow-hidden border border-white/[0.08] relative"
+  class="popup-shell flex flex-col h-screen bg-app/[0.97] text-fg overflow-hidden border border-overlay/[0.08] relative"
   style="backdrop-filter: blur(24px);"
 >
 
   <!-- ── Search header ───────────────────────────── -->
-  <div class="flex items-center gap-2.5 px-3.5 border-b border-white/[0.06] bg-[#09090c]/[0.6] shrink-0" style="min-height: 48px;">
+  <div class="flex items-center gap-2.5 px-3.5 border-b border-overlay/[0.06] bg-app/[0.6] shrink-0" style="min-height: 48px;">
 
     {#if currentCategory}
       <!-- Breadcrumb chip -->
@@ -263,10 +265,10 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="15 18 9 12 15 6"/></svg>
         {currentCategory}
       </button>
-      <div class="w-px h-4 bg-white/[0.08] shrink-0"></div>
+      <div class="w-px h-4 bg-overlay/[0.08] shrink-0"></div>
     {:else}
       <!-- Search icon -->
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-white/20 shrink-0 pointer-events-none">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-fg/20 shrink-0 pointer-events-none">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
     {/if}
@@ -276,14 +278,14 @@
       bind:this={searchInput}
       bind:value={searchQuery}
       placeholder={currentCategory ? `Search in ${currentCategory}…` : "Search history, groups…"}
-      class="flex-1 bg-transparent text-[14px] text-white/75 focus:outline-none placeholder:text-white/18 py-3"
+      class="flex-1 bg-transparent text-[14px] text-fg/75 focus:outline-none placeholder:text-fg/18 py-3"
     />
 
     {#if searchQuery}
       <button
         onclick={() => (searchQuery = "")}
         aria-label="Clear search"
-        class="shrink-0 text-white/20 hover:text-white/50 transition-colors"
+        class="shrink-0 text-fg/20 hover:text-fg/50 transition-colors"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -298,7 +300,7 @@
       {#each filteredCategories as cat, i}
         <div
           class="relative flex items-center justify-between px-3 py-2 rounded-xl cursor-default transition-all duration-75
-            {i === selectedIndex ? 'bg-white/[0.07]' : 'hover:bg-white/[0.04]'}"
+            {i === selectedIndex ? 'bg-overlay/[0.07]' : 'hover:bg-overlay/[0.04]'}"
           onclick={() => { currentCategory = cat; searchQuery = ""; }}
           onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); currentCategory = cat; searchQuery = ""; } }}
           role="button" tabindex="0" data-index={i}
@@ -312,9 +314,9 @@
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
             </div>
-            <span class="text-[13px] font-medium text-white/60 truncate">{cat}</span>
+            <span class="text-[13px] font-medium text-fg/60 truncate">{cat}</span>
           </div>
-          <span class="text-[9px] font-semibold uppercase tracking-[0.1em] text-white/20 shrink-0 ml-2">Group</span>
+          <span class="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg/20 shrink-0 ml-2">Group</span>
         </div>
       {/each}
     {/if}
@@ -326,7 +328,7 @@
       {@const itemUrl = (() => { try { if (!item.raw_content.trim().startsWith('http')) return null; return new URL(item.raw_content.trim()).hostname.replace(/^www\./, ''); } catch { return null; } })()}
       <div
         class="relative flex items-center gap-2.5 px-3 py-[8px] rounded-xl cursor-default transition-all duration-100 group
-          {isSelected ? 'bg-white/[0.08]' : 'hover:bg-white/[0.04]'}"
+          {isSelected ? 'bg-overlay/[0.08]' : 'hover:bg-overlay/[0.04]'}"
         style="{isSelected ? 'box-shadow: inset 0 0 0 1px rgba(255,138,61,0.15)' : ''}"
         onclick={() => copyAndPaste(item)}
         onmouseenter={(e) => handleItemHoverStart(e, item)}
@@ -345,7 +347,7 @@
         {/if}
 
         <!-- Type icon -->
-        <div class="w-[22px] h-[22px] flex items-center justify-center rounded-lg bg-white/[0.05] text-white/25 shrink-0">
+        <div class="w-[22px] h-[22px] flex items-center justify-center rounded-lg bg-overlay/[0.05] text-fg/25 shrink-0">
           <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             {@html getTypeIcon(item.category)}
           </svg>
@@ -355,20 +357,20 @@
         <div class="min-w-0 flex-1 overflow-hidden">
           {#if item.content_type === "image"}
             {#if thumbCache[item.id]}
-              <img src={thumbCache[item.id]} alt="Clipboard contents" class="{isSelected ? 'max-h-20' : 'max-h-10'} max-w-full rounded border border-white/[0.1] object-contain bg-black/20" />
+              <img src={thumbCache[item.id]} alt="Clipboard contents" class="{isSelected ? 'max-h-20' : 'max-h-10'} max-w-full rounded border border-overlay/[0.1] object-contain bg-black/20" />
             {:else}
-              <span class="text-[13px] text-white/55">[Image]</span>
+              <span class="text-[13px] text-fg/55">[Image]</span>
             {/if}
           {:else if item.content_type === "files"}
             <div class="flex flex-col gap-1.5">
               {#each parseFiles(item.raw_content) as f}
                 <div class="flex items-center gap-2 min-w-0" title={f}>
                   {#if isImagePath(f) && fileThumbCache[f]}
-                    <img src={fileThumbCache[f]} alt="" class="{isSelected ? 'h-11 w-11' : 'h-9 w-9'} rounded-md object-cover border border-white/[0.1] shrink-0 bg-black/20" />
+                    <img src={fileThumbCache[f]} alt="" class="{isSelected ? 'h-11 w-11' : 'h-9 w-9'} rounded-md object-cover border border-overlay/[0.1] shrink-0 bg-black/20" />
                   {:else}
-                    <span class="flex items-center justify-center {isSelected ? 'h-11 w-11' : 'h-9 w-9'} rounded-md bg-white/[0.06] border border-white/[0.1] text-[9px] font-bold uppercase tracking-wide text-[#AEB291]/85 shrink-0">{fileExt(f)}</span>
+                    <span class="flex items-center justify-center {isSelected ? 'h-11 w-11' : 'h-9 w-9'} rounded-md bg-overlay/[0.06] border border-overlay/[0.1] text-[9px] font-bold uppercase tracking-wide text-[#AEB291]/85 shrink-0">{fileExt(f)}</span>
                   {/if}
-                  <span class="text-[13px] text-white/65 truncate">{baseName(f)}</span>
+                  <span class="text-[13px] text-fg/65 truncate">{baseName(f)}</span>
                 </div>
               {/each}
             </div>
@@ -377,7 +379,7 @@
             {#if item.description}
               <p class="text-[10px] font-semibold text-[#AEB291]/70 truncate mb-0.5 tracking-tight">{item.description}</p>
             {/if}
-            <p class="text-[13px] text-white/75 leading-snug break-words line-clamp-3 whitespace-pre-wrap">
+            <p class="text-[13px] text-fg/75 leading-snug break-words line-clamp-3 whitespace-pre-wrap">
               {clipPreview(item.raw_content, item.content_type)}
             </p>
           {:else}
@@ -385,12 +387,12 @@
             <div class="flex items-baseline gap-1.5 min-w-0">
               {#if item.description}
                 <span class="text-[10px] font-semibold text-[#AEB291]/60 shrink-0 tracking-tight">{item.description}</span>
-                <span class="text-white/18 text-[10px] shrink-0">·</span>
+                <span class="text-fg/18 text-[10px] shrink-0">·</span>
               {:else if itemUrl}
                 <span class="text-[10px] font-semibold text-[#AEB291]/55 shrink-0 tracking-tight">{itemUrl}</span>
-                <span class="text-white/18 text-[10px] shrink-0">·</span>
+                <span class="text-fg/18 text-[10px] shrink-0">·</span>
               {/if}
-              <span class="text-[13px] text-white/55 truncate leading-snug">{clipPreview(item.raw_content, item.content_type)}</span>
+              <span class="text-[13px] text-fg/55 truncate leading-snug">{clipPreview(item.raw_content, item.content_type)}</span>
             </div>
           {/if}
         </div>
@@ -400,7 +402,7 @@
           <!-- Pin: always visible if pinned, hover otherwise -->
           <button
             onclick={(e) => { e.stopPropagation(); togglePermanent(item); }}
-            class="p-1 rounded-lg transition-all {item.is_permanent ? 'text-amber-400/80 opacity-100' : 'text-white/20 opacity-0 group-hover:opacity-100 hover:text-white/50'} hover:bg-white/[0.06]"
+            class="p-1 rounded-lg transition-all {item.is_permanent ? 'text-amber-400/80 opacity-100' : 'text-fg/20 opacity-0 group-hover:opacity-100 hover:text-fg/50'} hover:bg-overlay/[0.06]"
             title={item.is_permanent ? "Unpin" : "Pin"}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill={item.is_permanent ? "currentColor" : "none"} stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
@@ -409,14 +411,14 @@
           </button>
           <button
             onclick={(e) => { e.stopPropagation(); showGroupSelector = item.id; }}
-            class="p-1 opacity-0 group-hover:opacity-100 hover:bg-white/[0.06] rounded-lg transition-all text-white/25 hover:text-white/60"
+            class="p-1 opacity-0 group-hover:opacity-100 hover:bg-overlay/[0.06] rounded-lg transition-all text-fg/25 hover:text-fg/60"
             title="Save to group"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
           </button>
           <button
             onclick={(e) => { e.stopPropagation(); deleteItem(item); }}
-            class="p-1 opacity-0 group-hover:opacity-100 hover:bg-[#FF8A3D]/[0.08] rounded-lg transition-all text-white/25 hover:text-[#FF8A3D]/60"
+            class="p-1 opacity-0 group-hover:opacity-100 hover:bg-[#FF8A3D]/[0.08] rounded-lg transition-all text-fg/25 hover:text-[#FF8A3D]/60"
             title="Delete"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
@@ -430,12 +432,12 @@
     <!-- Empty state -->
     {#if history.length === 0 && filteredCategories.length === 0}
       <div class="flex flex-col items-center justify-center py-10 text-center">
-        <div class="w-10 h-10 rounded-2xl bg-white/[0.03] border border-white/[0.05] flex items-center justify-center mb-3 text-white/15">
+        <div class="w-10 h-10 rounded-2xl bg-overlay/[0.03] border border-overlay/[0.05] flex items-center justify-center mb-3 text-fg/15">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
           </svg>
         </div>
-        <p class="text-[12px] text-white/25">{searchQuery ? "No results" : "Nothing here yet"}</p>
+        <p class="text-[12px] text-fg/25">{searchQuery ? "No results" : "Nothing here yet"}</p>
       </div>
     {/if}
   </div>
@@ -443,10 +445,10 @@
   <!-- ── Group selector overlay ───────────────────── -->
   {#if showGroupSelector !== null}
     <div class="absolute inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-3 z-50">
-      <div class="bg-[#13151b] w-full max-w-[240px] rounded-2xl border border-white/[0.08] shadow-2xl shadow-black/60 overflow-hidden flex flex-col max-h-[80%]">
-        <div class="px-4 py-3 border-b border-white/[0.06] flex justify-between items-center">
-          <span class="text-[11px] font-semibold text-white/35 uppercase tracking-widest">Save to Group</span>
-          <button onclick={() => (showGroupSelector = null)} aria-label="Close" class="text-white/25 hover:text-white/70 transition-colors">
+      <div class="bg-surface w-full max-w-[240px] rounded-2xl border border-overlay/[0.08] shadow-2xl shadow-black/60 overflow-hidden flex flex-col max-h-[80%]">
+        <div class="px-4 py-3 border-b border-overlay/[0.06] flex justify-between items-center">
+          <span class="text-[11px] font-semibold text-fg/35 uppercase tracking-widest">Save to Group</span>
+          <button onclick={() => (showGroupSelector = null)} aria-label="Close" class="text-fg/25 hover:text-fg/70 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -454,7 +456,7 @@
           {#each categories as cat}
             <button
               onclick={() => addToGroup(showGroupSelector!, cat)}
-              class="w-full text-left px-3 py-2 text-[12px] hover:bg-white/[0.05] rounded-xl transition-colors flex items-center gap-2 text-white/40 hover:text-white/80"
+              class="w-full text-left px-3 py-2 text-[12px] hover:bg-overlay/[0.05] rounded-xl transition-colors flex items-center gap-2 text-fg/40 hover:text-fg/80"
             >
               <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-[#FF8A3D]/40 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -463,9 +465,9 @@
             </button>
           {/each}
         </div>
-        <div class="p-2 border-t border-white/[0.05]">
+        <div class="p-2 border-t border-overlay/[0.05]">
           <input type="text" bind:value={newGroupName} placeholder="New group…"
-            class="w-full bg-white/[0.04] border border-white/[0.07] rounded-lg px-2.5 py-1.5 text-[12px] text-white/60 placeholder:text-white/20 focus:outline-none focus:border-white/[0.12] mb-1.5"
+            class="w-full bg-overlay/[0.04] border border-overlay/[0.07] rounded-lg px-2.5 py-1.5 text-[12px] text-fg/60 placeholder:text-fg/20 focus:outline-none focus:border-overlay/[0.12] mb-1.5"
             onkeydown={(e) => e.key === "Enter" && createAndAddToGroup(showGroupSelector!)} />
           <button onclick={() => createAndAddToGroup(showGroupSelector!)}
             class="w-full bg-[#AEB291]/70 hover:bg-[#AEB291]/90 text-black text-[11px] font-semibold py-1.5 rounded-lg transition-colors">
@@ -477,17 +479,17 @@
   {/if}
 
   <!-- ── Status bar ────────────────────────────────── -->
-  <div class="px-4 py-2 border-t border-white/[0.05] bg-[#09090c]/[0.4] flex justify-between items-center shrink-0">
-    <span class="text-[9px] font-medium text-white/20 tracking-wide">
+  <div class="px-4 py-2 border-t border-overlay/[0.05] bg-app/[0.4] flex justify-between items-center shrink-0">
+    <span class="text-[9px] font-medium text-fg/20 tracking-wide">
       {history.length} clips{currentCategory ? ` in ${currentCategory}` : categories.length > 0 ? ` · ${categories.length} groups` : ""}
     </span>
     <div class="flex items-center gap-3">
-      <span class="text-[9px] text-white/15 flex items-center gap-1">
-        <kbd class="px-1 py-0.5 bg-white/[0.05] rounded text-[8px] border border-white/[0.07]">↵</kbd>
+      <span class="text-[9px] text-fg/15 flex items-center gap-1">
+        <kbd class="px-1 py-0.5 bg-overlay/[0.05] rounded text-[8px] border border-overlay/[0.07]">↵</kbd>
         paste
       </span>
-      <span class="text-[9px] text-white/15 flex items-center gap-1">
-        <kbd class="px-1 py-0.5 bg-white/[0.05] rounded text-[8px] border border-white/[0.07]">esc</kbd>
+      <span class="text-[9px] text-fg/15 flex items-center gap-1">
+        <kbd class="px-1 py-0.5 bg-overlay/[0.05] rounded text-[8px] border border-overlay/[0.07]">esc</kbd>
         hide
       </span>
     </div>

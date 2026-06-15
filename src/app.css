@@ -2,24 +2,31 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 
+/* Theme tokens as RGB triplets so Tailwind colors (rgb(var(--x) / <alpha>)) work.
+   Dark is the default; [data-theme="light"] overrides it. Accent colors
+   (orange, sage) are intentionally theme-independent. */
 :root {
-  --bg-deep:    #08090c;
-  --bg-base:    #0e1014;
-  --bg-surface: #141820;
-  --bg-raised:  #1c2028;
-  --stroke:     rgba(255, 255, 255, 0.09);
-  --stroke-md:  rgba(255, 255, 255, 0.15);
-  --text-1:     #f0f2f5;
-  --text-2:     #9aa0ab;
-  --text-3:     #545d6e;
-  --accent:     #ff8a3d;
-  --sage:       #aeb291;
+  --app:     8 9 12;
+  --surface: 19 21 27;
+  --raised:  28 31 40;
+  --fg:      255 255 255;
+  --overlay: 255 255 255;
+  --accent:  #ff8a3d;
+  --sage:    #aeb291;
+}
+
+:root[data-theme="light"] {
+  --app:     244 245 247;
+  --surface: 255 255 255;
+  --raised:  236 238 241;
+  --fg:      26 29 36;
+  --overlay: 15 23 42;
 }
 
 html,
 body {
-  background: var(--bg-deep);
-  color: var(--text-1);
+  background: rgb(var(--app));
+  color: rgb(var(--fg));
   font-family: -apple-system, "SF Pro Text", "Manrope", "Segoe UI Variable Text",
     "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -28,13 +35,13 @@ body {
 /* ── Scrollbar ──────────────────────────────────────── */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  scrollbar-color: rgb(var(--overlay) / 0.2) transparent;
 }
 
 .custom-scrollbar::-webkit-scrollbar        { width: 3px; }
 .custom-scrollbar::-webkit-scrollbar-track  { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb  {
-  background: rgba(255, 255, 255, 0.13);
+  background: rgb(var(--overlay) / 0.25);
   border-radius: 999px;
 }
 
@@ -44,11 +51,11 @@ body {
 }
 
 .modal-box {
-  @apply bg-[#13151b] border border-white/[0.12] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden p-5;
+  @apply bg-surface border border-overlay/[0.12] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden p-5;
 }
 
 .modal-title {
-  @apply text-[14px] font-semibold text-white/85 mb-4;
+  @apply text-[14px] font-semibold text-fg/85 mb-4;
 }
 
 .modal-footer {
@@ -56,15 +63,15 @@ body {
 }
 
 .modal-check-row {
-  @apply flex items-center gap-2.5 text-[12px] text-white/55 p-2 hover:bg-white/[0.05] rounded-lg cursor-pointer transition-colors;
+  @apply flex items-center gap-2.5 text-[12px] text-fg/55 p-2 hover:bg-overlay/[0.05] rounded-lg cursor-pointer transition-colors;
 }
 
 .modal-input {
-  @apply bg-white/[0.05] border border-white/[0.1] rounded-lg px-3 py-2 text-[13px] text-white/75 focus:outline-none focus:border-white/[0.18] focus:bg-white/[0.07] transition-all placeholder:text-white/25;
+  @apply bg-overlay/[0.05] border border-overlay/[0.1] rounded-lg px-3 py-2 text-[13px] text-fg/75 focus:outline-none focus:border-overlay/[0.18] focus:bg-overlay/[0.07] transition-all placeholder:text-fg/25;
 }
 
 .modal-field-label {
-  @apply block text-[10px] font-semibold uppercase tracking-[0.1em] text-white/45 mb-1.5;
+  @apply block text-[10px] font-semibold uppercase tracking-[0.1em] text-fg/45 mb-1.5;
 }
 
 /* ── Buttons ─────────────────────────────────────────── */
@@ -73,12 +80,12 @@ body {
 }
 
 .btn-ghost {
-  @apply h-8 px-3 text-[12px] text-white/50 hover:text-white/80 transition-colors;
+  @apply h-8 px-3 text-[12px] text-fg/50 hover:text-fg/80 transition-colors;
 }
 
 /* ── Menu items ─────────────────────────────────────── */
 .menu-item {
-  @apply w-full text-left px-3 py-[7px] text-[12px] text-white/60 hover:text-white/90 hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors;
+  @apply w-full text-left px-3 py-[7px] text-[12px] text-fg/60 hover:text-fg/90 hover:bg-overlay/[0.06] flex items-center gap-2.5 transition-colors;
 }
 
 /* ── Section headers (time groups, pinned) ──────────── */
@@ -87,7 +94,7 @@ body {
 }
 .section-header::after {
   content: '';
-  @apply flex-1 h-px bg-white/[0.06];
+  @apply flex-1 h-px bg-overlay/[0.06];
 }
 
 /* ── Modal section label ────────────────────────────── */
