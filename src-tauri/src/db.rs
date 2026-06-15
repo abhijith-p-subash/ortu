@@ -5,6 +5,9 @@ use tauri::{AppHandle, Manager};
 
 pub struct ClipboardDB {
     conn: Mutex<Connection>,
+    /// Whether the FTS5 full-text index is available; when false, search falls
+    /// back to LIKE scans.
+    fts_enabled: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -64,6 +67,22 @@ fn fuzzy_score(query: &str, text: &str) -> i32 {
         }
     }
     score
+}
+
+/// Builds an FTS5 MATCH query from free user text. Each alphanumeric token
+/// becomes a quoted prefix term so partial words match. Returns None when there
+/// are no usable tokens (caller falls back to LIKE).
+fn build_fts_query(input: &str) -> Option<String> {
+    let tokens: Vec<String> = input
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .map(|t| format!("\"{}\"*", t.replace('"', "\"\"")))
+        .collect();
+    if tokens.is_empty() {
+        None
+    } else {
+        Some(tokens.join(" "))
+    }
 }
 
 impl ClipboardDB {
@@ -237,9 +256,66 @@ impl ClipboardDB {
             [],
         )?;
 
+        // Full-text search index (FTS5), mirroring `history` via triggers. May be
+        // absent on some SQLite builds; degrade gracefully to LIKE search.
+        let fts_enabled = Self::setup_fts(&conn).unwrap_or_else(|e| {
+            eprintln!("DB: FTS5 unavailable, falling back to LIKE search: {}", e);
+            false
+        });
+
         Ok(ClipboardDB {
             conn: Mutex::new(conn),
+            fts_enabled,
         })
+    }
+
+    /// Creates the FTS5 virtual table, sync triggers, and backfills the index
+    /// once. Returns Ok(true) when FTS5 is ready.
+    fn setup_fts(conn: &Connection) -> Result<bool> {
+        conn.execute_batch(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS history_fts USING fts5(
+                raw_content,
+                description,
+                content='history',
+                content_rowid='id'
+            );
+
+            CREATE TRIGGER IF NOT EXISTS history_fts_ai AFTER INSERT ON history BEGIN
+                INSERT INTO history_fts(rowid, raw_content, description)
+                VALUES (new.id, new.raw_content, COALESCE(new.description, ''));
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS history_fts_ad AFTER DELETE ON history BEGIN
+                INSERT INTO history_fts(history_fts, rowid, raw_content, description)
+                VALUES ('delete', old.id, old.raw_content, COALESCE(old.description, ''));
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS history_fts_au AFTER UPDATE ON history BEGIN
+                INSERT INTO history_fts(history_fts, rowid, raw_content, description)
+                VALUES ('delete', old.id, old.raw_content, COALESCE(old.description, ''));
+                INSERT INTO history_fts(rowid, raw_content, description)
+                VALUES (new.id, new.raw_content, COALESCE(new.description, ''));
+            END;",
+        )?;
+
+        // One-time backfill of existing rows (idempotent rebuild).
+        let built: Option<String> = conn
+            .query_row(
+                "SELECT value FROM app_meta WHERE key = 'fts_built'",
+                [],
+                |row| row.get(0),
+            )
+            .ok();
+        if built.as_deref() != Some("1") {
+            conn.execute_batch("INSERT INTO history_fts(history_fts) VALUES('rebuild');")?;
+            conn.execute(
+                "INSERT INTO app_meta (key, value) VALUES ('fts_built', '1')
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                [],
+            )?;
+        }
+
+        Ok(true)
     }
 
     fn open_fallback_connection() -> Result<Connection> {
@@ -635,22 +711,47 @@ impl ClipboardDB {
             } else {
                 fuzzy_query = Some(s.clone());
                 let pattern = format!("%{}%", s);
-                stmt = conn.prepare(
-                    "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0)
-                     FROM history
-                     WHERE raw_content LIKE ?1
-                        OR description LIKE ?1
-                        OR category LIKE ?1
-                        OR EXISTS (
-                            SELECT 1
-                            FROM item_groups ig
-                            JOIN groups g ON ig.group_id = g.id
-                            WHERE ig.item_id = history.id AND g.name LIKE ?1
-                        )
-                     ORDER BY is_permanent DESC, created_at DESC
-                     LIMIT 500",
-                )?;
-                rows = stmt.query(params![pattern])?;
+                // Fast path: FTS5 retrieves content/description candidates; we
+                // still match category/group names for parity, then the Rust
+                // fuzzy reranker orders the candidate set.
+                match (self.fts_enabled, build_fts_query(&s)) {
+                    (true, Some(fts)) => {
+                        stmt = conn.prepare(
+                            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0)
+                             FROM history
+                             WHERE id IN (SELECT rowid FROM history_fts WHERE history_fts MATCH ?1)
+                                OR category LIKE ?2
+                                OR EXISTS (
+                                    SELECT 1
+                                    FROM item_groups ig
+                                    JOIN groups g ON ig.group_id = g.id
+                                    WHERE ig.item_id = history.id AND g.name LIKE ?2
+                                )
+                             ORDER BY is_permanent DESC, created_at DESC
+                             LIMIT 500",
+                        )?;
+                        rows = stmt.query(params![fts, pattern])?;
+                    }
+                    _ => {
+                        // Fallback: LIKE scan (FTS unavailable or no usable tokens).
+                        stmt = conn.prepare(
+                            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0)
+                             FROM history
+                             WHERE raw_content LIKE ?1
+                                OR description LIKE ?1
+                                OR category LIKE ?1
+                                OR EXISTS (
+                                    SELECT 1
+                                    FROM item_groups ig
+                                    JOIN groups g ON ig.group_id = g.id
+                                    WHERE ig.item_id = history.id AND g.name LIKE ?1
+                                )
+                             ORDER BY is_permanent DESC, created_at DESC
+                             LIMIT 500",
+                        )?;
+                        rows = stmt.query(params![pattern])?;
+                    }
+                }
             }
         } else {
             stmt = conn.prepare(
