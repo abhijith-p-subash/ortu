@@ -51,6 +51,19 @@
     currentTheme = t;
     setTheme(t);
   }
+  let autoMaskSecrets = $state(false);
+  async function loadAutoMask() {
+    try {
+      const v = (await invoke("get_setting", { key: "auto_mask_secrets" })) as string | null;
+      autoMaskSecrets = v === "1";
+    } catch { /* default off */ }
+  }
+  async function toggleAutoMask() {
+    autoMaskSecrets = !autoMaskSecrets;
+    try {
+      await invoke("set_setting", { key: "auto_mask_secrets", value: autoMaskSecrets ? "1" : "0" });
+    } catch (e) { showToast("Failed to save setting", "error"); }
+  }
   let currentPlatform = $state<string>("macos");
   let macAccessibilityGranted = $state(true);
   let checkingMacAccessibility = $state(false);
@@ -215,6 +228,31 @@
         }
       }
     }
+  }
+
+  // ── Sensitive items (encrypt + mask) ───────────────────
+  let revealedCache = $state<Record<number, string>>({}); // id → decrypted plaintext (while revealed)
+
+  async function toggleSensitive(item: ClipboardItem) {
+    try {
+      await invoke("set_item_sensitive", { id: item.id, sensitive: !item.is_sensitive });
+      hideRevealed(item.id);
+      await refreshAll();
+      showToast(item.is_sensitive ? "Unmasked" : "Masked & encrypted", "success");
+    } catch (e) { showToast("Failed: " + e, "error"); }
+  }
+
+  async function revealItem(item: ClipboardItem) {
+    try {
+      const text = (await invoke("reveal_item", { id: item.id })) as string;
+      revealedCache = { ...revealedCache, [item.id]: text };
+    } catch (e) { showToast("Couldn't reveal: " + e, "error"); }
+  }
+
+  function hideRevealed(id: number) {
+    const c = { ...revealedCache };
+    delete c[id];
+    revealedCache = c;
   }
 
   function parseFiles(raw: string): string[] {
@@ -463,6 +501,10 @@
   }
 
   function openEditModal(item: ClipboardItem) {
+    if (item.is_sensitive) {
+      showToast("Unmask this item before editing", "info");
+      return;
+    }
     editingItem = item;
     editContent = item.raw_content;
     editDescription = item.description || "";
@@ -644,7 +686,7 @@
               Export All (.txt)
             </button>
             <div class="h-px bg-overlay/[0.05] my-1 mx-3"></div>
-            <button onclick={() => { showMoreMenu=false; currentTheme = getStoredTheme(); showSettingsModal=true; }} class="menu-item">
+            <button onclick={() => { showMoreMenu=false; currentTheme = getStoredTheme(); loadAutoMask(); showSettingsModal=true; }} class="menu-item">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               Settings
             </button>
@@ -1009,6 +1051,25 @@
           {/each}
         </div>
 
+      {:else if item.is_sensitive}
+        <!-- Sensitive item: encrypted at rest, masked until revealed -->
+        {#if item.description}
+          <p class="text-[10px] font-semibold text-[#AEB291]/70 truncate mb-1">{item.description}</p>
+        {/if}
+        {#if revealedCache[item.id] !== undefined}
+          <p class="text-[13px] text-fg/80 font-mono break-all whitespace-pre-wrap {expandedItems.includes(item.id) ? '' : 'line-clamp-3'}">{revealedCache[item.id]}</p>
+          <button onclick={(e) => { e.stopPropagation(); hideRevealed(item.id); }} class="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-[#FF8A3D]/80 hover:text-[#FF8A3D] transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            Hide
+          </button>
+        {:else}
+          <div class="flex items-center gap-2.5 py-0.5">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-amber-400/70 shrink-0"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span class="text-[15px] tracking-[0.3em] text-fg/40 select-none font-mono leading-none">••••••••</span>
+            <button onclick={(e) => { e.stopPropagation(); revealItem(item); }} class="text-[10px] font-semibold text-[#FF8A3D]/80 hover:text-[#FF8A3D] transition-colors">Reveal</button>
+          </div>
+        {/if}
+
       {:else if item.description}
         <!-- content is primary; description is a small secondary label -->
         <p class="text-[13px] text-fg/80 {expandedItems.includes(item.id) ? '' : 'line-clamp-2'} leading-relaxed break-words mb-1">{item.raw_content}</p>
@@ -1057,6 +1118,16 @@
 
     <!-- Action trio (hover / selected) -->
     <div class="flex items-center gap-0.5 shrink-0 self-start transition-opacity {isSelected ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100'}">
+      {#if item.content_type !== "image" && item.content_type !== "files"}
+        <button class="p-1.5 rounded-lg transition-all hover:bg-overlay/[0.07] {item.is_sensitive ? 'text-amber-400' : 'text-fg/40 hover:text-fg/75'}"
+          onclick={(e) => { e.stopPropagation(); toggleSensitive(item); }} title={item.is_sensitive ? "Unmask & decrypt" : "Mask & encrypt"}>
+          {#if item.is_sensitive}
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+          {:else}
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          {/if}
+        </button>
+      {/if}
       <button class="p-1.5 rounded-lg transition-all hover:bg-overlay/[0.07] {item.is_permanent ? 'text-amber-400' : 'text-fg/40 hover:text-fg/75'}"
         onclick={(e) => { e.stopPropagation(); togglePermanent(item); }} title="Pin">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill={item.is_permanent ? "currentColor" : "none"} stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
@@ -1381,6 +1452,24 @@
               >{opt.label}</button>
             {/each}
           </div>
+        </div>
+
+        <!-- Privacy / sensitive data -->
+        <div class="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg/20 pt-1">Privacy</div>
+        <div class="flex items-start justify-between gap-4 p-3.5 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05]">
+          <div class="min-w-0">
+            <div class="text-[13px] font-medium text-fg/70">Auto-mask detected secrets</div>
+            <p class="text-[11px] text-fg/35 mt-0.5 leading-relaxed">Automatically encrypt &amp; mask copied passwords, API keys, tokens and SSH keys. You can always reveal and copy them back.</p>
+          </div>
+          <button
+            role="switch"
+            aria-checked={autoMaskSecrets}
+            aria-label="Toggle auto-mask secrets"
+            onclick={toggleAutoMask}
+            class="relative shrink-0 mt-0.5 h-[22px] w-[38px] rounded-full transition-colors {autoMaskSecrets ? 'bg-[#FF8A3D]' : 'bg-overlay/[0.12]'}"
+          >
+            <span class="absolute top-[2px] left-[2px] h-[18px] w-[18px] rounded-full bg-white shadow transition-transform {autoMaskSecrets ? 'translate-x-[16px]' : ''}"></span>
+          </button>
         </div>
       </div>
       <div class="px-5 py-3 border-t border-overlay/[0.05] flex justify-end">

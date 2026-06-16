@@ -1,6 +1,7 @@
 #![allow(unexpected_cfgs)]
 mod clipboard;
 mod commands;
+mod crypto;
 mod db;
 
 use db::ClipboardDB;
@@ -233,6 +234,10 @@ pub fn run() {
             commands::copy_item_to_clipboard,
             commands::get_image_thumbnail,
             commands::get_file_thumbnail,
+            commands::set_item_sensitive,
+            commands::reveal_item,
+            commands::get_setting,
+            commands::set_setting,
             commands::copy_item_and_paste,
             commands::copy_item_and_paste_from_popup,
             commands::get_macos_accessibility_status,

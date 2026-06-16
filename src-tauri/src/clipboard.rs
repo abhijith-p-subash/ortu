@@ -9,6 +9,13 @@ use tauri::AppHandle;
 use tauri::Emitter;
 use tauri::Manager;
 
+/// Classifier groups that indicate the content is a credential/secret.
+const SENSITIVE_GROUPS: &[&str] = &["Security", "Secret / Key", "JWT / Token", "SSH / Certificates"];
+
+fn scores_are_sensitive(scores: &HashMap<String, f32>) -> bool {
+    SENSITIVE_GROUPS.iter().any(|g| scores.contains_key(*g))
+}
+
 /// SHA-256 of bytes as lowercase hex; used to content-address images.
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
@@ -36,7 +43,7 @@ fn store_image(db: &ClipboardDB, img: arboard::ImageData, hash: &str) -> Result<
         .map_err(|e| e.to_string())?;
 
     db.insert_blob(hash, "image/png", &png, Some(&thumb)).map_err(|e| e.to_string())?;
-    db.insert_auto_grouped_content("image", hash.to_string(), vec![("Images".to_string(), 1.0)])
+    db.insert_auto_grouped_content("image", hash.to_string(), vec![("Images".to_string(), 1.0)], false)
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -78,7 +85,7 @@ fn try_capture_files(app: &AppHandle, last_signature: &mut String) -> bool {
             let json = serde_json::to_string(&paths).unwrap_or_default();
             if !json.is_empty()
                 && db
-                    .insert_auto_grouped_content("files", json, vec![("Files".to_string(), 1.0)])
+                    .insert_auto_grouped_content("files", json, vec![("Files".to_string(), 1.0)], false)
                     .is_ok()
             {
                 *last_signature = signature;
@@ -705,8 +712,31 @@ pub fn start_listener(app: AppHandle) {
                         add_score(&mut scores, &sim_cat, 0.45);
                     }
                 }
+
+                // Optional auto-masking: when enabled, secrets detected by the
+                // classifier are stored encrypted + masked instead of plaintext.
+                let looks_sensitive = scores_are_sensitive(&scores);
+                let auto_mask = looks_sensitive
+                    && db.get_setting("auto_mask_secrets").ok().flatten().as_deref() == Some("1");
+
+                let (content_to_store, is_sensitive) = if auto_mask {
+                    match crate::crypto::get_or_create_key(&app)
+                        .and_then(|key| crate::crypto::encrypt(&key, &normalized))
+                    {
+                        Ok(enc) => (enc, true),
+                        Err(_) => (normalized, false), // fall back to plaintext on key failure
+                    }
+                } else {
+                    (normalized, false)
+                };
+
                 if db
-                    .insert_auto_grouped_content("text", normalized, finalize_scores(scores))
+                    .insert_auto_grouped_content(
+                        "text",
+                        content_to_store,
+                        finalize_scores(scores),
+                        is_sensitive,
+                    )
                     .is_ok()
                 {
                     last_signature = signature;

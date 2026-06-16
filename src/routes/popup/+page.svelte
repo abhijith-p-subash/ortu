@@ -374,6 +374,16 @@
                 </div>
               {/each}
             </div>
+          {:else if item.is_sensitive}
+            <!-- Sensitive: masked; pasting still works (decrypts on copy) -->
+            <div class="flex items-center gap-2 min-w-0">
+              {#if item.description}
+                <span class="text-[10px] font-semibold text-[#AEB291]/60 shrink-0 tracking-tight">{item.description}</span>
+                <span class="text-fg/18 text-[10px] shrink-0">·</span>
+              {/if}
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-amber-400/60 shrink-0"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span class="text-[13px] tracking-[0.25em] text-fg/45 font-mono select-none">••••••</span>
+            </div>
           {:else if isSelected}
             <!-- Expanded: description on its own line, content up to 3 lines -->
             {#if item.description}

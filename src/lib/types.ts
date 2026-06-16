@@ -8,6 +8,7 @@ export interface ClipboardItem {
     created_at: string;
     description: string | null;
     is_manual: boolean;
+    is_sensitive: boolean;
 }
 
 export interface Snippet {

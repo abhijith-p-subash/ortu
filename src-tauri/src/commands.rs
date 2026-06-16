@@ -369,12 +369,69 @@ pub fn copy_item_to_clipboard(app: AppHandle, id: i64) -> Result<(), String> {
             }
         }
         _ => {
+            // Sensitive items are stored encrypted; decrypt before copying.
+            let text = if crate::crypto::is_encrypted(&raw_content) {
+                let key = crate::crypto::get_or_create_key(&app)?;
+                crate::crypto::decrypt(&key, &raw_content)?
+            } else {
+                raw_content
+            };
             let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-            clipboard.set_text(raw_content).map_err(|e| e.to_string())?;
+            clipboard.set_text(text).map_err(|e| e.to_string())?;
         }
     }
 
     Ok(())
+}
+
+/// Marks an item sensitive (encrypts its content + masks it) or clears the flag
+/// (decrypts and restores plaintext). Only meaningful for text items.
+#[tauri::command]
+pub fn set_item_sensitive(app: AppHandle, id: i64, sensitive: bool) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    let (_content_type, raw_content) = db.get_item_payload(id).map_err(|e| e.to_string())?;
+    let key = crate::crypto::get_or_create_key(&app)?;
+
+    if sensitive {
+        if crate::crypto::is_encrypted(&raw_content) {
+            return Ok(()); // already encrypted
+        }
+        let enc = crate::crypto::encrypt(&key, &raw_content)?;
+        db.set_raw_and_sensitive(id, &enc, true).map_err(|e| e.to_string())?;
+    } else {
+        let plain = if crate::crypto::is_encrypted(&raw_content) {
+            crate::crypto::decrypt(&key, &raw_content)?
+        } else {
+            raw_content
+        };
+        db.set_raw_and_sensitive(id, &plain, false).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Returns the decrypted plaintext of a sensitive item, for an explicit reveal.
+#[tauri::command]
+pub fn reveal_item(app: AppHandle, id: i64) -> Result<String, String> {
+    let db = app.state::<ClipboardDB>();
+    let (_content_type, raw_content) = db.get_item_payload(id).map_err(|e| e.to_string())?;
+    if crate::crypto::is_encrypted(&raw_content) {
+        let key = crate::crypto::get_or_create_key(&app)?;
+        crate::crypto::decrypt(&key, &raw_content)
+    } else {
+        Ok(raw_content)
+    }
+}
+
+#[tauri::command]
+pub fn get_setting(app: AppHandle, key: String) -> Result<Option<String>, String> {
+    let db = app.state::<ClipboardDB>();
+    db.get_setting(&key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), String> {
+    let db = app.state::<ClipboardDB>();
+    db.set_setting(&key, &value).map_err(|e| e.to_string())
 }
 
 /// Returns a base64 PNG data URL for an image item's thumbnail, for UI display.

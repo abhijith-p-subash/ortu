@@ -44,6 +44,9 @@ urlencoding = "2.1"
 # Image clipboard support: encode/decode common formats + thumbnails, content hashing for dedup.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 sha2 = "0.10"
+# Field-level encryption for sensitive (masked) clipboard items.
+aes-gcm = "0.10"
+getrandom = "0.2"
 
 # The updater is desktop-only; keep it out of any future mobile build.
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]

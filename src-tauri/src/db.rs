@@ -21,6 +21,9 @@ pub struct ClipboardItem {
     pub created_at: String,
     pub description: Option<String>,
     pub is_manual: bool,
+    // Marked sensitive: content is encrypted at rest and masked in the UI.
+    #[serde(default)]
+    pub is_sensitive: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -214,9 +217,10 @@ impl ClipboardDB {
             [],
         )?;
 
-        // Migrate: add description and is_manual columns if not present
+        // Migrate: add description, is_manual and is_sensitive columns if not present
         let _ = conn.execute("ALTER TABLE history ADD COLUMN description TEXT", []);
         let _ = conn.execute("ALTER TABLE history ADD COLUMN is_manual BOOLEAN DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE history ADD COLUMN is_sensitive BOOLEAN DEFAULT 0", []);
 
         // Migrate existing categories into groups table
         conn.execute(
@@ -572,7 +576,7 @@ impl ClipboardDB {
         if let Some(cat) = category.clone() {
             groups.push((cat, 1.0));
         }
-        self.insert_item_with_groups("text", content, category, groups, false)
+        self.insert_item_with_groups("text", content, category, groups, false, false)
     }
 
     pub fn insert_auto_grouped_content(
@@ -580,9 +584,10 @@ impl ClipboardDB {
         content_type: &str,
         content: String,
         groups: Vec<(String, f32)>,
+        is_sensitive: bool,
     ) -> Result<i64> {
         let primary = groups.first().map(|(name, _)| name.clone());
-        self.insert_item_with_groups(content_type, content, primary, groups, true)
+        self.insert_item_with_groups(content_type, content, primary, groups, true, is_sensitive)
     }
 
     fn insert_item_with_groups(
@@ -592,6 +597,7 @@ impl ClipboardDB {
         primary_category: Option<String>,
         groups: Vec<(String, f32)>,
         system_groups: bool,
+        is_sensitive: bool,
     ) -> Result<i64> {
         let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
@@ -609,15 +615,16 @@ impl ClipboardDB {
                 "UPDATE history
                  SET created_at = CURRENT_TIMESTAMP,
                      category = COALESCE(?1, category),
-                     content_type = ?2
-                 WHERE id = ?3",
-                params![primary_category, content_type, id],
+                     content_type = ?2,
+                     is_sensitive = ?3
+                 WHERE id = ?4",
+                params![primary_category, content_type, is_sensitive, id],
             )?;
             id
         } else {
             tx.execute(
-                "INSERT INTO history (content_type, raw_content, category, is_manual) VALUES (?1, ?2, ?3, 0)",
-                params![content_type, content, primary_category],
+                "INSERT INTO history (content_type, raw_content, category, is_manual, is_sensitive) VALUES (?1, ?2, ?3, 0, ?4)",
+                params![content_type, content, primary_category, is_sensitive],
             )?;
             tx.last_insert_rowid()
         };
@@ -662,7 +669,7 @@ impl ClipboardDB {
 
                 if group_name.eq_ignore_ascii_case("text") {
                     stmt = conn.prepare(
-                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0)
+                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
                          FROM history h
                          WHERE h.content_type = 'text' AND h.raw_content LIKE ?1
                          ORDER BY h.is_permanent DESC, h.created_at DESC
@@ -671,7 +678,7 @@ impl ClipboardDB {
                     rows = stmt.query(params![search_pattern])?;
                 } else if group_name.eq_ignore_ascii_case("images") {
                     stmt = conn.prepare(
-                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0)
+                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
                          FROM history h
                          WHERE h.content_type = 'image' AND h.raw_content LIKE ?1
                          ORDER BY h.is_permanent DESC, h.created_at DESC
@@ -682,7 +689,7 @@ impl ClipboardDB {
                     || group_name.eq_ignore_ascii_case("urls")
                 {
                     stmt = conn.prepare(
-                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0)
+                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
                          FROM history h
                          LEFT JOIN item_groups ig ON h.id = ig.item_id
                          LEFT JOIN groups g ON ig.group_id = g.id
@@ -698,7 +705,7 @@ impl ClipboardDB {
                     rows = stmt.query(params![search_pattern])?;
                 } else {
                     stmt = conn.prepare(
-                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0)
+                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
                          FROM history h
                          JOIN item_groups ig ON h.id = ig.item_id
                          JOIN groups g ON ig.group_id = g.id
@@ -717,7 +724,7 @@ impl ClipboardDB {
                 match (self.fts_enabled, build_fts_query(&s)) {
                     (true, Some(fts)) => {
                         stmt = conn.prepare(
-                            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0)
+                            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0), COALESCE(is_sensitive, 0)
                              FROM history
                              WHERE id IN (SELECT rowid FROM history_fts WHERE history_fts MATCH ?1)
                                 OR category LIKE ?2
@@ -735,7 +742,7 @@ impl ClipboardDB {
                     _ => {
                         // Fallback: LIKE scan (FTS unavailable or no usable tokens).
                         stmt = conn.prepare(
-                            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0)
+                            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0), COALESCE(is_sensitive, 0)
                              FROM history
                              WHERE raw_content LIKE ?1
                                 OR description LIKE ?1
@@ -755,7 +762,7 @@ impl ClipboardDB {
             }
         } else {
             stmt = conn.prepare(
-                "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0)
+                "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0), COALESCE(is_sensitive, 0)
                  FROM history
                  ORDER BY is_permanent DESC, created_at DESC
                  LIMIT 100",
@@ -769,16 +776,25 @@ impl ClipboardDB {
         while let Some(row) = rows.next()? {
             let id: i64 = row.get(0)?;
             item_ids.push(id);
+            let is_sensitive: bool = row.get(8)?;
+            // Sensitive items are never sent to the UI in clear; the content
+            // stays encrypted at rest and is only revealed on explicit request.
+            let raw_content: String = if is_sensitive {
+                String::new()
+            } else {
+                row.get(2)?
+            };
             items.push(ClipboardItem {
                 id,
                 content_type: row.get(1)?,
-                raw_content: row.get(2)?,
+                raw_content,
                 category: row.get(3)?,
                 groups: Vec::new(),
                 is_permanent: row.get(4)?,
                 created_at: row.get(5)?,
                 description: row.get(6)?,
                 is_manual: row.get(7)?,
+                is_sensitive,
             });
         }
 
@@ -992,6 +1008,40 @@ impl ClipboardDB {
         )
     }
 
+    /// Replaces an item's stored content and sets its sensitive flag. Used when
+    /// marking (store ciphertext) or unmarking (store plaintext) an item.
+    pub fn set_raw_and_sensitive(&self, id: i64, content: &str, is_sensitive: bool) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "UPDATE history SET raw_content = ?1, is_sensitive = ?2 WHERE id = ?3",
+            params![content, is_sensitive, id],
+        )?;
+        Ok(())
+    }
+
+    // --- App settings (key/value in app_meta) ---
+
+    pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        Ok(conn
+            .query_row(
+                "SELECT value FROM app_meta WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .ok())
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "INSERT INTO app_meta (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
     // --- Image blob store ---
 
     /// Stores image bytes (+ optional thumbnail) keyed by content hash. No-op if
@@ -1107,17 +1157,17 @@ impl ClipboardDB {
         // 1. Determine which items to fetch
         let sql = if let Some(ref groups) = selected_groups {
             if groups.is_empty() {
-                "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0)
+                "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
                   FROM history h"
             } else {
-                "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0)
+                "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
                   FROM history h
                   JOIN item_groups ig ON h.id = ig.item_id
                   JOIN groups g ON ig.group_id = g.id
                   WHERE g.name IN "
             }
         } else {
-            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0) FROM history"
+            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0), COALESCE(is_sensitive, 0) FROM history"
         };
 
         let mut final_sql = sql.to_string();
@@ -1137,6 +1187,8 @@ impl ClipboardDB {
         let params = rusqlite::params_from_iter(params_vec.iter());
 
         let history_iter = stmt.query_map(params, |row| {
+            // Backup keeps sensitive content as-is (encrypted), so a restore on
+            // the same machine (same key) round-trips it.
             Ok(ClipboardItem {
                 id: row.get(0)?,
                 content_type: row.get(1)?,
@@ -1147,6 +1199,7 @@ impl ClipboardDB {
                 created_at: row.get(5)?,
                 description: row.get(6)?,
                 is_manual: row.get(7)?,
+                is_sensitive: row.get(8)?,
             })
         })?;
         let mut history: Vec<ClipboardItem> = history_iter.collect::<Result<_, _>>()?;
@@ -1251,8 +1304,8 @@ impl ClipboardDB {
         // Restore history
         {
             let mut insert_stmt = tx.prepare(
-                "INSERT INTO history (content_type, raw_content, category, is_permanent, created_at, description, is_manual)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+                "INSERT INTO history (content_type, raw_content, category, is_permanent, created_at, description, is_manual, is_sensitive)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
             )?;
 
             // For checking existence in Merge mode
@@ -1283,7 +1336,8 @@ impl ClipboardDB {
                         item.is_permanent,
                         item.created_at,
                         item.description,
-                        item.is_manual
+                        item.is_manual,
+                        item.is_sensitive
                     ])?;
                     item_id = tx.last_insert_rowid();
                 }
