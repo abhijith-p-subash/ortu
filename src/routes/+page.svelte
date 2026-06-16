@@ -70,6 +70,8 @@
   let showCopiedToast = $state(false);
   let copiedToastTimer: number | null = null;
   let showMoreMenu = $state(false);
+  let pasteStack = $state<ClipboardItem[]>([]);
+  let showStackPanel = $state(false);
   let updateAvailable = $state(false);
   let latestVersion = $state("");
   let updateInstalling = $state(false);
@@ -253,6 +255,31 @@
     const c = { ...revealedCache };
     delete c[id];
     revealedCache = c;
+  }
+
+  // ── Paste stack (multi-paste queue) ─────────────────────
+  async function loadStack() {
+    try { pasteStack = (await invoke("stack_list")) as ClipboardItem[]; }
+    catch { /* ignore */ }
+  }
+  async function addToStack(item: ClipboardItem) {
+    try { await invoke("stack_add", { id: item.id }); showToast("Added to paste stack", "success"); }
+    catch (e) { showToast("Failed: " + e, "error"); }
+  }
+  async function removeFromStack(id: number) {
+    try { await invoke("stack_remove", { id }); } catch { /* ignore */ }
+  }
+  async function clearStack() {
+    try { await invoke("stack_clear"); } catch { /* ignore */ }
+  }
+  function stackItemLabel(item: ClipboardItem): string {
+    if (item.is_sensitive) return "•••••• (masked)";
+    if (item.content_type === "image") return "[Image]";
+    if (item.content_type === "files") {
+      const f = parseFiles(item.raw_content);
+      return f.length ? baseName(f[0]) + (f.length > 1 ? ` +${f.length - 1}` : "") : "[Files]";
+    }
+    return item.raw_content;
   }
 
   function parseFiles(raw: string): string[] {
@@ -587,21 +614,25 @@
 
   onMount(() => {
     refreshAll();
+    loadStack();
     window.addEventListener("keydown", handleKeydown);
     const noCtxMenu = (e: MouseEvent) => e.preventDefault();
     window.addEventListener("contextmenu", noCtxMenu);
 
     let unlistenFocus: () => void;
     let unlistenClipboard: () => void;
+    let unlistenStack: () => void;
 
     const setup = async () => {
       try {
         const uF = await listen("tauri://focus", async () => {
-          await refreshAll(); await tick(); searchInput?.focus();
+          await refreshAll(); await loadStack(); await tick(); searchInput?.focus();
         });
         unlistenFocus = uF;
         const uC = await listen("clipboard-updated", async () => { await loadHistory(); await loadAllItems(); });
         unlistenClipboard = uC;
+        const uS = await listen("stack-updated", async () => { await loadStack(); });
+        unlistenStack = uS;
       } catch (e) { console.error(e); }
     };
     setup();
@@ -611,6 +642,7 @@
       window.removeEventListener("contextmenu", noCtxMenu);
       if (unlistenFocus) unlistenFocus();
       if (unlistenClipboard) unlistenClipboard();
+      if (unlistenStack) unlistenStack();
     };
   });
 
@@ -651,6 +683,53 @@
       <span class="text-[13px] font-semibold text-fg/88 tracking-tight">Ortu</span>
     </div>
     <div class="flex items-center gap-1">
+      <!-- Paste stack -->
+      <div class="relative">
+        <button
+          onclick={() => { showStackPanel = !showStackPanel; if (showStackPanel) loadStack(); }}
+          aria-label="Paste stack"
+          title="Paste stack (⌥⇧V to paste next)"
+          class="relative h-[26px] w-[26px] flex items-center justify-center rounded-md transition-all {pasteStack.length > 0 ? 'text-[#FF8A3D] hover:bg-[#FF8A3D]/[0.12]' : 'text-fg/55 hover:text-fg/90 hover:bg-overlay/[0.09]'}"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          {#if pasteStack.length > 0}
+            <span class="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#FF8A3D] text-black text-[9px] font-bold flex items-center justify-center leading-none">{pasteStack.length}</span>
+          {/if}
+        </button>
+        {#if showStackPanel}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div role="menu" tabindex="-1"
+            class="absolute right-0 top-[30px] w-72 bg-raised border border-overlay/[0.14] rounded-xl shadow-2xl shadow-black/70 z-50 overflow-hidden"
+            onmouseleave={() => (showStackPanel = false)}>
+            <div class="px-3 py-2.5 border-b border-overlay/[0.07] flex items-center justify-between">
+              <span class="text-[11px] font-semibold text-fg/70">Paste Stack <span class="text-fg/35">({pasteStack.length})</span></span>
+              {#if pasteStack.length > 0}
+                <button onclick={clearStack} class="text-[10px] text-fg/40 hover:text-[#FF8A3D] transition-colors">Clear all</button>
+              {/if}
+            </div>
+            {#if pasteStack.length === 0}
+              <div class="px-3 py-5 text-center text-[11px] text-fg/35">
+                Stack is empty.<br />Use the stack icon on an item to queue it.
+              </div>
+            {:else}
+              <div class="max-h-64 overflow-y-auto custom-scrollbar py-1">
+                {#each pasteStack as item, i}
+                  <div class="flex items-center gap-2 px-2.5 py-1.5 hover:bg-overlay/[0.05] group/stk">
+                    <span class="w-4 shrink-0 text-[10px] font-mono text-fg/30 text-right">{i + 1}</span>
+                    <span class="flex-1 min-w-0 truncate text-[12px] text-fg/70">{stackItemLabel(item)}</span>
+                    <button onclick={() => removeFromStack(item.id)} aria-label="Remove" class="shrink-0 opacity-0 group-hover/stk:opacity-100 text-fg/30 hover:text-[#FF8A3D] transition-all">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+            <div class="px-3 py-2 border-t border-overlay/[0.07] bg-overlay/[0.02]">
+              <p class="text-[10px] text-fg/40 leading-relaxed">Press <kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-fg/60 text-[9px] font-semibold">⌥⇧V</kbd> in any app to paste the next item, in order.</p>
+            </div>
+          </div>
+        {/if}
+      </div>
       <button
         onclick={() => { newItemGroupInput = selectedGroup || ""; showAddItemModal = true; }}
         class="flex items-center gap-1.5 h-[26px] px-2.5 rounded-md text-[11px] font-semibold text-black transition-all bg-[#FF8A3D] hover:bg-[#ff9a56] active:scale-95 shadow-sm shadow-[#FF8A3D]/25"
@@ -1118,6 +1197,10 @@
 
     <!-- Action trio (hover / selected) -->
     <div class="flex items-center gap-0.5 shrink-0 self-start transition-opacity {isSelected ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100'}">
+      <button class="p-1.5 rounded-lg transition-all hover:bg-overlay/[0.07] text-fg/40 hover:text-[#FF8A3D]"
+        onclick={(e) => { e.stopPropagation(); addToStack(item); }} title="Add to paste stack">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      </button>
       {#if item.content_type !== "image" && item.content_type !== "files"}
         <button class="p-1.5 rounded-lg transition-all hover:bg-overlay/[0.07] {item.is_sensitive ? 'text-amber-400' : 'text-fg/40 hover:text-fg/75'}"
           onclick={(e) => { e.stopPropagation(); toggleSensitive(item); }} title={item.is_sensitive ? "Unmask & decrypt" : "Mask & encrypt"}>

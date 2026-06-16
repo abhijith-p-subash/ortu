@@ -33,6 +33,19 @@
     return name.slice(i + 1).toUpperCase().slice(0, 4);
   }
 
+  // Paste stack
+  let stackCount = $state(0);
+  async function loadStackCount() {
+    try { stackCount = ((await invoke("stack_list")) as unknown[]).length; }
+    catch { stackCount = 0; }
+  }
+  async function addToStack(item: ClipboardItem) {
+    try { await invoke("stack_add", { id: item.id }); } catch { /* ignore */ }
+  }
+  async function clearStack() {
+    try { await invoke("stack_clear"); } catch { /* ignore */ }
+  }
+
   async function loadThumbnails(items: ClipboardItem[]) {
     for (const item of items) {
       if (item.content_type === "image" && !thumbCache[item.id]) {
@@ -73,6 +86,7 @@
       history = historyData;
       categories = catData;
       loadThumbnails(historyData);
+      loadStackCount();
       const total = history.length + (currentCategory ? 0 : filteredCategories.length);
       if (selectedIndex >= total) selectedIndex = Math.max(0, total - 1);
     } catch (e) { console.error("Failed to load data:", e); }
@@ -220,7 +234,8 @@
           });
         });
         const unClipboard = await listen("clipboard-updated", async () => { await loadData(); });
-        return () => { unFocus(); unClipboard(); };
+        const unStack = await listen("stack-updated", async () => { await loadStackCount(); });
+        return () => { unFocus(); unClipboard(); unStack(); };
       } catch (err) { console.error("Failed to setup listeners:", err); return () => {}; }
     };
 
@@ -291,6 +306,17 @@
       </button>
     {/if}
   </div>
+
+  <!-- ── Paste stack banner ───────────────────────── -->
+  {#if stackCount > 0}
+    <div class="flex items-center gap-2 px-3.5 py-1.5 bg-[#FF8A3D]/[0.08] border-b border-[#FF8A3D]/[0.15] shrink-0">
+      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[#FF8A3D] shrink-0"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      <span class="text-[11px] text-fg/65 flex-1 min-w-0 truncate">
+        <span class="font-semibold text-[#FF8A3D]">{stackCount}</span> in paste stack · <kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-[9px] font-semibold text-fg/60">⌥⇧V</kbd> to paste next
+      </span>
+      <button onclick={clearStack} class="text-[10px] text-fg/40 hover:text-[#FF8A3D] transition-colors shrink-0">Clear</button>
+    </div>
+  {/if}
 
   <!-- ── Item list ────────────────────────────────── -->
   <div class="flex-1 overflow-y-auto custom-scrollbar py-1.5 px-1.5" bind:this={container}>
@@ -409,6 +435,13 @@
 
         <!-- Right actions -->
         <div class="flex items-center gap-0.5 shrink-0">
+          <button
+            onclick={(e) => { e.stopPropagation(); addToStack(item); }}
+            title="Add to paste stack"
+            class="p-1 rounded-lg transition-all text-fg/20 opacity-0 group-hover:opacity-100 hover:text-[#FF8A3D] hover:bg-overlay/[0.06]"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          </button>
           <!-- Pin: always visible if pinned, hover otherwise -->
           <button
             onclick={(e) => { e.stopPropagation(); togglePermanent(item); }}

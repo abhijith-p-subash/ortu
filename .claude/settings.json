@@ -36,7 +36,10 @@
       "Bash(swift /tmp/click.swift 888 438)",
       "Bash(screencapture -x -R235,73,1000,700 /tmp/dark_after.png)",
       "Bash(sips -Z 1100 /tmp/dark_after.png --out /tmp/dark_after_z.png)",
-      "Bash(cargo fetch *)"
+      "Bash(cargo fetch *)",
+      "Bash(perl -e 'select\\(undef,undef,undef,0.8\\)')",
+      "Bash(screencapture -x -R235,73,1000,130 /tmp/stack_hdr.png)",
+      "Bash(sips -Z 1400 /tmp/stack_hdr.png --out /tmp/stack_hdr_z.png)"
     ],
     "additionalDirectories": [
       "/Users/abhijithpsubash"

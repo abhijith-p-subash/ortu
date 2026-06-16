@@ -1,9 +1,10 @@
 use crate::db::{ClipboardDB, ClipboardItem, Snippet};
 #[cfg(target_os = "macos")]
 use crate::PopupPasteTarget;
+use crate::PasteStack;
 use base64::Engine as _;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[cfg(target_os = "macos")]
 #[link(name = "ApplicationServices", kind = "framework")]
@@ -432,6 +433,83 @@ pub fn get_setting(app: AppHandle, key: String) -> Result<Option<String>, String
 pub fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), String> {
     let db = app.state::<ClipboardDB>();
     db.set_setting(&key, &value).map_err(|e| e.to_string())
+}
+
+// ── Paste stack (multi-paste queue) ─────────────────────────────────────────
+
+/// Appends an item to the paste stack (no duplicates).
+#[tauri::command]
+pub fn stack_add(app: AppHandle, id: i64) -> Result<(), String> {
+    {
+        let stack = app.state::<PasteStack>();
+        let mut q = stack.0.lock().map_err(|_| "lock".to_string())?;
+        if !q.contains(&id) {
+            q.push(id);
+        }
+    }
+    let _ = app.emit("stack-updated", ());
+    Ok(())
+}
+
+/// Removes a specific item from the paste stack.
+#[tauri::command]
+pub fn stack_remove(app: AppHandle, id: i64) -> Result<(), String> {
+    {
+        let stack = app.state::<PasteStack>();
+        let mut q = stack.0.lock().map_err(|_| "lock".to_string())?;
+        q.retain(|x| *x != id);
+    }
+    let _ = app.emit("stack-updated", ());
+    Ok(())
+}
+
+/// Empties the paste stack.
+#[tauri::command]
+pub fn stack_clear(app: AppHandle) -> Result<(), String> {
+    {
+        let stack = app.state::<PasteStack>();
+        let mut q = stack.0.lock().map_err(|_| "lock".to_string())?;
+        q.clear();
+    }
+    let _ = app.emit("stack-updated", ());
+    Ok(())
+}
+
+/// Returns the queued items (masked where sensitive), in paste order.
+#[tauri::command]
+pub fn stack_list(app: AppHandle) -> Result<Vec<ClipboardItem>, String> {
+    let ids = {
+        let stack = app.state::<PasteStack>();
+        let q = stack.0.lock().map_err(|_| "lock".to_string())?;
+        q.clone()
+    };
+    let db = app.state::<ClipboardDB>();
+    db.get_items_by_ids(&ids).map_err(|e| e.to_string())
+}
+
+/// Pops the front of the paste stack, copies it to the clipboard, and pastes it
+/// into the current frontmost app. Returns false when the stack is empty.
+#[tauri::command]
+pub async fn paste_next_from_stack(app: AppHandle) -> Result<bool, String> {
+    let next = {
+        let stack = app.state::<PasteStack>();
+        let mut q = stack.0.lock().map_err(|_| "lock".to_string())?;
+        if q.is_empty() {
+            None
+        } else {
+            Some(q.remove(0))
+        }
+    };
+
+    let Some(id) = next else {
+        return Ok(false);
+    };
+
+    copy_item_to_clipboard(app.clone(), id)?;
+    let _ = app.emit("stack-updated", ());
+    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+    send_paste_shortcut()?;
+    Ok(true)
 }
 
 /// Returns a base64 PNG data URL for an image item's thumbnail, for UI display.

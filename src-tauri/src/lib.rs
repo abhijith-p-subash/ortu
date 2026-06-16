@@ -38,6 +38,9 @@ use std::os::raw::c_char;
 
 pub struct PopupPasteTarget(pub Mutex<Option<String>>);
 
+/// Ordered queue of history item ids for the paste stack (multi-paste).
+pub struct PasteStack(pub Mutex<Vec<i64>>);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     install_panic_hook();
@@ -68,8 +71,18 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, s, e| {
-                    if e.state == ShortcutState::Pressed && s.matches(Modifiers::ALT, Code::KeyV) {
+                    if e.state != ShortcutState::Pressed {
+                        return;
+                    }
+                    if s.matches(Modifiers::ALT, Code::KeyV) {
                         toggle_popup(app);
+                    } else if s.matches(Modifiers::ALT | Modifiers::SHIFT, Code::KeyV) {
+                        // Paste the next item from the paste stack into the
+                        // current frontmost app.
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = commands::paste_next_from_stack(app).await;
+                        });
                     }
                 })
                 .build(),
@@ -85,6 +98,11 @@ pub fn run() {
                 if let Err(e) = app.global_shortcut().register(shortcut) {
                     log::error!("Failed to register global shortcut: {}", e);
                     eprintln!("Failed to register global shortcut: {}", e);
+                }
+                // Paste-stack: paste the next queued item.
+                let paste_next = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
+                if let Err(e) = app.global_shortcut().register(paste_next) {
+                    log::error!("Failed to register paste-stack shortcut: {}", e);
                 }
             }
 
@@ -130,6 +148,7 @@ pub fn run() {
             }
             app.manage(db);
             app.manage(PopupPasteTarget(Mutex::new(None)));
+            app.manage(PasteStack(Mutex::new(Vec::new())));
 
             // ---------------- TRAY ----------------
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -238,6 +257,11 @@ pub fn run() {
             commands::reveal_item,
             commands::get_setting,
             commands::set_setting,
+            commands::stack_add,
+            commands::stack_remove,
+            commands::stack_clear,
+            commands::stack_list,
+            commands::paste_next_from_stack,
             commands::copy_item_and_paste,
             commands::copy_item_and_paste_from_popup,
             commands::get_macos_accessibility_status,

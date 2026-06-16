@@ -1019,6 +1019,44 @@ impl ClipboardDB {
         Ok(())
     }
 
+    /// Fetches items by id (for the paste stack), masking sensitive content and
+    /// returning them in the same order as `ids`.
+    pub fn get_items_by_ids(&self, ids: &[i64]) -> Result<Vec<ClipboardItem>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
+        let sql = format!(
+            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0), COALESCE(is_sensitive, 0)
+             FROM history WHERE id IN ({})",
+            placeholders.join(",")
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+            let is_sensitive: bool = row.get(8)?;
+            let raw_content: String = if is_sensitive { String::new() } else { row.get(2)? };
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                content_type: row.get(1)?,
+                raw_content,
+                category: row.get(3)?,
+                groups: Vec::new(),
+                is_permanent: row.get(4)?,
+                created_at: row.get(5)?,
+                description: row.get(6)?,
+                is_manual: row.get(7)?,
+                is_sensitive,
+            })
+        })?;
+        let mut by_id: HashMap<i64, ClipboardItem> = HashMap::new();
+        for r in rows {
+            let item = r?;
+            by_id.insert(item.id, item);
+        }
+        Ok(ids.iter().filter_map(|id| by_id.remove(id)).collect())
+    }
+
     // --- App settings (key/value in app_meta) ---
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
