@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import type { ClipboardItem } from "$lib/types";
+  import type { ClipboardItem, Snippet } from "$lib/types";
   import { listen } from "@tauri-apps/api/event";
   import { save, open } from "@tauri-apps/plugin-dialog";
   import { platform } from "@tauri-apps/plugin-os";
@@ -117,6 +117,67 @@
       await refreshAll();
       showToast("Retention updated", "success");
     } catch (e) { showToast("Failed: " + e, "error"); }
+  }
+
+  // ── Snippets (with smart variables) ─────────────────────
+  let showSnippetsModal = $state(false);
+  let snippets = $state<Snippet[]>([]);
+  let editSnippetId = $state<number | null>(null); // null = list view, -1 = new, >0 = editing
+  let editSnippetName = $state("");
+  let editSnippetBody = $state("");
+  let useSnippetTarget = $state<Snippet | null>(null);
+  let snippetInputs = $state<{ label: string; value: string }[]>([]);
+
+  async function loadSnippets() {
+    try { snippets = (await invoke("list_snippets")) as Snippet[]; }
+    catch { snippets = []; }
+  }
+  function startNewSnippet() { editSnippetId = -1; editSnippetName = ""; editSnippetBody = ""; }
+  function startEditSnippet(s: Snippet) { editSnippetId = s.id; editSnippetName = s.name; editSnippetBody = s.body; }
+  function cancelSnippetEdit() { editSnippetId = null; }
+  async function saveSnippet() {
+    if (!editSnippetName.trim() || !editSnippetBody.trim()) { showToast("Name and body required", "error"); return; }
+    try {
+      await invoke("save_snippet", { name: editSnippetName.trim(), body: editSnippetBody });
+      editSnippetId = null;
+      await loadSnippets();
+      showToast("Snippet saved", "success");
+    } catch (e) { showToast("Failed: " + e, "error"); }
+  }
+  async function removeSnippet(id: number) {
+    try { await invoke("delete_snippet", { id }); await loadSnippets(); }
+    catch (e) { showToast("Failed: " + e, "error"); }
+  }
+  function parseSnippetInputs(body: string): string[] {
+    const re = /\{\{input:([^}]+)\}\}/g;
+    const set = new Set<string>();
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(body))) set.add(m[1].trim());
+    return [...set];
+  }
+  async function useSnippet(s: Snippet) {
+    const labels = parseSnippetInputs(s.body);
+    if (labels.length > 0) {
+      useSnippetTarget = s;
+      snippetInputs = labels.map(label => ({ label, value: "" }));
+    } else {
+      await renderAndCopySnippet(s.body, {});
+    }
+  }
+  async function renderAndCopySnippet(body: string, inputs: Record<string, string>) {
+    try {
+      const clip = allItems[0] && !allItems[0].is_sensitive ? allItems[0].raw_content : "";
+      const out = (await invoke("render_snippet", { body, clipboard: clip, inputs })) as string;
+      await invoke("set_clipboard_text", { text: out });
+      useSnippetTarget = null;
+      showToast("Snippet copied to clipboard", "success");
+    } catch (e) { showToast("Failed: " + e, "error"); }
+  }
+  async function confirmSnippetInputs() {
+    if (!useSnippetTarget) return;
+    const inputs: Record<string, string> = {};
+    for (const f of snippetInputs) inputs[f.label] = f.value;
+    await renderAndCopySnippet(useSnippetTarget.body, inputs);
   }
 
   let currentPlatform = $state<string>("macos");
@@ -820,6 +881,10 @@
               Export All (.txt)
             </button>
             <div class="h-px bg-overlay/[0.05] my-1 mx-3"></div>
+            <button onclick={() => { showMoreMenu=false; editSnippetId=null; loadSnippets(); showSnippetsModal=true; }} class="menu-item">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              Snippets
+            </button>
             <button onclick={() => { showMoreMenu=false; currentTheme = getStoredTheme(); loadAutoMask(); loadRetention(); showSettingsModal=true; }} class="menu-item">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               Settings
@@ -1660,6 +1725,93 @@
           <button onclick={() => copyAsTarget && copyAsItem(copyAsTarget, t.value, t.label)}
             class="px-3 py-2 rounded-lg text-[12px] text-fg/70 bg-overlay/[0.04] hover:bg-overlay/[0.08] hover:text-fg/90 border border-overlay/[0.06] transition-colors text-left">{t.label}</button>
         {/each}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Snippets manager -->
+{#if showSnippetsModal}
+  <div class="modal-backdrop" onclick={(e) => { if (e.target === e.currentTarget) showSnippetsModal = false; }} onkeydown={(e) => { if (e.key === "Escape") { if (editSnippetId !== null) editSnippetId = null; else showSnippetsModal = false; } }} role="dialog" aria-modal="true" tabindex="-1">
+    <div class="modal-box w-full max-w-lg">
+      <div class="px-5 py-4 border-b border-overlay/[0.06] flex items-center justify-between">
+        <div><h3 class="modal-title mb-0">Snippets</h3><p class="text-[11px] text-fg/30 mt-0.5">Reusable text with smart variables</p></div>
+        <button onclick={() => (showSnippetsModal = false)} class="text-fg/25 hover:text-fg/70 transition-colors" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+
+      {#if editSnippetId !== null}
+        <!-- Editor -->
+        <div class="p-5 space-y-3">
+          <div>
+            <label for="snip-name" class="modal-field-label">Name</label>
+            <input id="snip-name" type="text" bind:value={editSnippetName} placeholder="e.g. Meeting notes" class="modal-input w-full" />
+          </div>
+          <div>
+            <label for="snip-body" class="modal-field-label">Body</label>
+            <textarea id="snip-body" bind:value={editSnippetBody} rows="6" placeholder="Type your snippet… use variables below" class="modal-input w-full resize-none font-mono text-[12px]"></textarea>
+          </div>
+          <div class="p-2.5 bg-overlay/[0.03] rounded-lg border border-overlay/[0.05]">
+            <p class="text-[10px] text-fg/40 leading-relaxed">Variables: <span class="text-[#AEB291]/80 font-mono">&lbrace;&lbrace;clipboard&rbrace;&rbrace; &lbrace;&lbrace;date&rbrace;&rbrace; &lbrace;&lbrace;time&rbrace;&rbrace; &lbrace;&lbrace;datetime&rbrace;&rbrace; &lbrace;&lbrace;date:%d %b %Y&rbrace;&rbrace; &lbrace;&lbrace;uuid&rbrace;&rbrace; &lbrace;&lbrace;input:Name&rbrace;&rbrace;</span></p>
+          </div>
+          <div class="flex justify-end gap-2 pt-1">
+            <button onclick={cancelSnippetEdit} class="btn-ghost">Cancel</button>
+            <button onclick={saveSnippet} class="btn-primary">Save</button>
+          </div>
+        </div>
+      {:else}
+        <!-- List -->
+        <div class="p-3 max-h-[60vh] overflow-y-auto custom-scrollbar">
+          {#if snippets.length === 0}
+            <div class="px-3 py-8 text-center text-[12px] text-fg/35">No snippets yet.<br />Create one to reuse text with variables.</div>
+          {:else}
+            <div class="space-y-1">
+              {#each snippets as s}
+                <div class="group/snip flex items-center gap-2 p-2.5 rounded-lg hover:bg-overlay/[0.04]">
+                  <div class="min-w-0 flex-1">
+                    <div class="text-[13px] font-medium text-fg/80 truncate">{s.name}</div>
+                    <div class="text-[11px] text-fg/35 truncate">{s.body}</div>
+                  </div>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <button onclick={() => useSnippet(s)} class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#FF8A3D] text-black hover:bg-[#ff9a56] transition-colors">Use</button>
+                    <button onclick={() => startEditSnippet(s)} aria-label="Edit" class="p-1.5 rounded-md text-fg/40 hover:text-fg/80 hover:bg-overlay/[0.07] transition-all">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    <button onclick={() => removeSnippet(s.id)} aria-label="Delete" class="p-1.5 rounded-md text-fg/40 hover:text-[#FF8A3D] hover:bg-[#FF8A3D]/[0.1] transition-all">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                    </button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+        <div class="px-5 py-3 border-t border-overlay/[0.05] flex justify-end">
+          <button onclick={startNewSnippet} class="btn-primary">New snippet</button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
+<!-- Fill snippet inputs -->
+{#if useSnippetTarget}
+  <div class="modal-backdrop" onclick={(e) => { if (e.target === e.currentTarget) useSnippetTarget = null; }} onkeydown={(e) => { if (e.key === "Escape") useSnippetTarget = null; }} role="dialog" aria-modal="true" tabindex="-1">
+    <div class="modal-box w-full max-w-sm">
+      <div class="px-5 py-4 border-b border-overlay/[0.06] flex items-center justify-between">
+        <div><h3 class="modal-title mb-0">Fill in “{useSnippetTarget.name}”</h3><p class="text-[11px] text-fg/30 mt-0.5">Values for this snippet</p></div>
+        <button onclick={() => (useSnippetTarget = null)} class="text-fg/25 hover:text-fg/70 transition-colors" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <div class="p-5 space-y-3">
+        {#each snippetInputs as field, i}
+          <div>
+            <label for={"snipin-" + i} class="modal-field-label">{field.label}</label>
+            <input id={"snipin-" + i} type="text" bind:value={snippetInputs[i].value} class="modal-input w-full"
+              onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); confirmSnippetInputs(); } }} />
+          </div>
+        {/each}
+      </div>
+      <div class="px-5 py-3 border-t border-overlay/[0.05] flex justify-end">
+        <button onclick={confirmSnippetInputs} class="btn-primary">Copy</button>
       </div>
     </div>
   </div>

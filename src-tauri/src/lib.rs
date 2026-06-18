@@ -265,6 +265,7 @@ pub fn run() {
             commands::stack_list,
             commands::paste_next_from_stack,
             commands::copy_as,
+            commands::set_clipboard_text,
             commands::copy_item_and_paste,
             commands::copy_item_and_paste_from_popup,
             commands::get_macos_accessibility_status,

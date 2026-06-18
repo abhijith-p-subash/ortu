@@ -163,14 +163,56 @@ pub fn delete_snippet(app: AppHandle, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn render_snippet(body: String, clipboard: Option<String>) -> Result<String, String> {
+pub fn render_snippet(
+    body: String,
+    clipboard: Option<String>,
+    inputs: Option<std::collections::HashMap<String, String>>,
+) -> Result<String, String> {
     let now = chrono::Local::now();
-    let mut rendered = body
+    let mut s = body;
+
+    // {{input:Label}} — values collected from the user before rendering.
+    if let Some(map) = inputs {
+        for (label, value) in map {
+            s = s.replace(&format!("{{{{input:{}}}}}", label), &value);
+        }
+    }
+
+    // {{date:FORMAT}} — chrono strftime, e.g. {{date:%A, %d %b %Y}}.
+    if let Ok(re) = regex::Regex::new(r"\{\{date:([^}]+)\}\}") {
+        s = re
+            .replace_all(&s, |caps: &regex::Captures| now.format(&caps[1]).to_string())
+            .to_string();
+    }
+
+    // Simple built-in variables.
+    s = s
         .replace("{{date}}", &now.format("%Y-%m-%d").to_string())
         .replace("{{time}}", &now.format("%H:%M:%S").to_string())
-        .replace("{{datetime}}", &now.format("%Y-%m-%d %H:%M:%S").to_string());
-    rendered = rendered.replace("{{clipboard}}", &clipboard.unwrap_or_default());
-    Ok(rendered)
+        .replace("{{datetime}}", &now.format("%Y-%m-%d %H:%M:%S").to_string())
+        .replace("{{clipboard}}", &clipboard.unwrap_or_default());
+
+    // {{uuid}} — a fresh v4 UUID for each occurrence.
+    while s.contains("{{uuid}}") {
+        s = s.replacen("{{uuid}}", &gen_uuid_v4(), 1);
+    }
+
+    // {{cursor}} is a paste-time marker; not meaningful for copy, so strip it.
+    s = s.replace("{{cursor}}", "");
+
+    Ok(s)
+}
+
+/// Generates a random v4 UUID string.
+fn gen_uuid_v4() -> String {
+    let mut b = [0u8; 16];
+    let _ = getrandom::getrandom(&mut b);
+    b[6] = (b[6] & 0x0f) | 0x40; // version 4
+    b[8] = (b[8] & 0x3f) | 0x80; // variant
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]
+    )
 }
 
 #[tauri::command]
@@ -383,6 +425,14 @@ pub fn copy_item_to_clipboard(app: AppHandle, id: i64) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Puts arbitrary text on the system clipboard (used by the snippet "use" flow).
+#[tauri::command]
+pub fn set_clipboard_text(text: String) -> Result<(), String> {
+    use arboard::Clipboard;
+    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.set_text(text).map_err(|e| e.to_string())
 }
 
 /// Returns the plaintext for stored content, decrypting it if it's a sensitive
@@ -664,4 +714,25 @@ pub fn close_window(app: AppHandle, label: Option<String>) -> Result<(), String>
         window.hide().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod snippet_tests {
+    use super::*;
+    #[test]
+    fn renders_smart_variables() {
+        let mut inputs = std::collections::HashMap::new();
+        inputs.insert("Name".to_string(), "Alice".to_string());
+        let body = "Hi {{input:Name}} | cb={{clipboard}} | yr={{date:%Y}} | id={{uuid}} | cur={{cursor}}END".to_string();
+        let out = render_snippet(body, Some("CLIP".to_string()), Some(inputs)).unwrap();
+        assert!(out.contains("Hi Alice "), "input: {out}");
+        assert!(out.contains("cb=CLIP "), "clipboard: {out}");
+        assert!(out.contains(&format!("yr={} ", chrono::Local::now().format("%Y"))), "date:fmt: {out}");
+        assert!(out.contains("cur=END"), "cursor stripped: {out}");
+        assert!(!out.contains("{{"), "all placeholders replaced: {out}");
+        // uuid: 36 chars with dashes at the right spots
+        let uuid = out.split("id=").nth(1).unwrap().split(' ').next().unwrap();
+        assert_eq!(uuid.len(), 36, "uuid len: {uuid}");
+        assert_eq!(uuid.as_bytes()[14], b'4', "uuid v4: {uuid}");
+    }
 }
