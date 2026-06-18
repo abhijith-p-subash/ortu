@@ -119,37 +119,6 @@
     } catch (e) { showToast("Failed: " + e, "error"); }
   }
 
-  // ── F5: Per-app paste rules ─────────────────────────────
-  let pasteRules = $state<{ bundle: string; transform: string }[]>([]);
-  let newRuleBundle = $state("");
-  let newRuleTransform = $state("trim");
-  async function loadPasteRules() {
-    try {
-      const j = (await invoke("get_setting", { key: "paste_rules" })) as string | null;
-      const m = j ? JSON.parse(j) : {};
-      pasteRules = Object.entries(m).map(([bundle, transform]) => ({ bundle, transform: transform as string }));
-    } catch { pasteRules = []; }
-  }
-  async function savePasteRules() {
-    const m: Record<string, string> = {};
-    for (const r of pasteRules) if (r.bundle.trim()) m[r.bundle.trim()] = r.transform;
-    try { await invoke("set_setting", { key: "paste_rules", value: JSON.stringify(m) }); }
-    catch (e) { showToast("Failed to save rules", "error"); }
-  }
-  async function addPasteRule() {
-    const b = newRuleBundle.trim();
-    if (!b) return;
-    pasteRules = [...pasteRules.filter(r => r.bundle !== b), { bundle: b, transform: newRuleTransform }];
-    newRuleBundle = "";
-    await savePasteRules();
-  }
-  async function removePasteRule(bundle: string) {
-    pasteRules = pasteRules.filter(r => r.bundle !== bundle);
-    await savePasteRules();
-  }
-  function transformLabel(v: string): string {
-    return TRANSFORM_OPTIONS.find(t => t.value === v)?.label ?? v;
-  }
   let currentPlatform = $state<string>("macos");
   let macAccessibilityGranted = $state(true);
   let checkingMacAccessibility = $state(false);
@@ -851,7 +820,7 @@
               Export All (.txt)
             </button>
             <div class="h-px bg-overlay/[0.05] my-1 mx-3"></div>
-            <button onclick={() => { showMoreMenu=false; currentTheme = getStoredTheme(); loadAutoMask(); loadRetention(); loadPasteRules(); showSettingsModal=true; }} class="menu-item">
+            <button onclick={() => { showMoreMenu=false; currentTheme = getStoredTheme(); loadAutoMask(); loadRetention(); showSettingsModal=true; }} class="menu-item">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               Settings
             </button>
@@ -1669,29 +1638,6 @@
             </div>
           </div>
           <p class="text-[10px] text-fg/30 leading-relaxed">Pinned items and items in your groups are always kept — retention only clears ungrouped history.</p>
-        </div>
-
-        <!-- Per-app paste rules (F5) -->
-        <div class="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg/20 pt-1">Per-app paste rules</div>
-        <div class="p-3.5 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05] space-y-2.5">
-          <p class="text-[11px] text-fg/35 leading-relaxed">Auto-transform text when pasting into a specific app (via the popup). Use the app's bundle id, e.g. <span class="text-fg/55">com.microsoft.VSCode</span>.{currentPlatform === "macos" ? "" : " (macOS only)"}</p>
-          {#each pasteRules as rule}
-            <div class="flex items-center gap-2">
-              <span class="flex-1 min-w-0 truncate text-[12px] text-fg/65">{rule.bundle}</span>
-              <span class="text-[10px] text-[#AEB291]/80 shrink-0">{transformLabel(rule.transform)}</span>
-              <button onclick={() => removePasteRule(rule.bundle)} aria-label="Remove rule" class="shrink-0 text-fg/30 hover:text-[#FF8A3D] transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-          {/each}
-          <div class="flex items-center gap-2">
-            <input type="text" bind:value={newRuleBundle} placeholder="com.example.app" class="modal-input flex-1 min-w-0"
-              onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPasteRule(); } }} />
-            <select bind:value={newRuleTransform} class="modal-input shrink-0 w-[120px]">
-              {#each TRANSFORM_OPTIONS as t}<option value={t.value}>{t.label}</option>{/each}
-            </select>
-            <button onclick={addPasteRule} class="btn-primary shrink-0">Add</button>
-          </div>
         </div>
       </div>
       <div class="px-5 py-3 border-t border-overlay/[0.05] flex justify-end">

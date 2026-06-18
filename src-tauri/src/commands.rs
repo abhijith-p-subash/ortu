@@ -413,40 +413,6 @@ pub fn copy_as(app: AppHandle, id: i64, transform: String) -> Result<(), String>
     Ok(())
 }
 
-/// Looks up a per-app paste transform for the given target app bundle id, from
-/// the `paste_rules` setting (a JSON object of bundle_id → transform).
-fn paste_rule_for(db: &ClipboardDB, bundle: &str) -> Option<String> {
-    let json = db.get_setting("paste_rules").ok().flatten()?;
-    let map: std::collections::HashMap<String, String> = serde_json::from_str(&json).ok()?;
-    map.get(bundle)
-        .filter(|t| !t.is_empty() && t.as_str() != "none")
-        .cloned()
-}
-
-/// Sets the clipboard for a popup paste, honoring a per-app rule transform for
-/// text items pasted into `target_bundle`. Falls back to a normal copy.
-fn set_clipboard_for_paste(app: &AppHandle, id: i64, target_bundle: Option<&str>) -> Result<(), String> {
-    if let Some(bundle) = target_bundle {
-        let db = app.state::<ClipboardDB>();
-        if let Ok((content_type, raw)) = db.get_item_payload(id) {
-            if content_type == "text" {
-                if let Some(transform) = paste_rule_for(db.inner(), bundle) {
-                    if let Ok(plain) = resolve_plaintext(app, &raw) {
-                        if let Ok(out) = transform_content(plain, transform) {
-                            if let Ok(mut cb) = arboard::Clipboard::new() {
-                                if cb.set_text(out).is_ok() {
-                                    return Ok(());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    copy_item_to_clipboard(app.clone(), id)
-}
-
 /// Marks an item sensitive (encrypts its content + masks it) or clears the flag
 /// (decrypts and restores plaintext). Only meaningful for text items.
 #[tauri::command]
@@ -629,14 +595,15 @@ pub async fn copy_item_and_paste_from_popup(app: AppHandle, id: i64) -> Result<(
         let _ = window.hide();
     }
 
+    copy_item_to_clipboard(app.clone(), id)?;
+    log::info!("Clipboard payload restored for item {}", id);
+
     #[cfg(target_os = "macos")]
     {
         let target_bundle = app
             .try_state::<PopupPasteTarget>()
             .and_then(|s| s.0.lock().ok().and_then(|g| g.clone()));
         log::info!("Stored popup target bundle: {:?}", target_bundle);
-        // Honor per-app paste rules (e.g. plain-text into a code editor).
-        set_clipboard_for_paste(&app, id, target_bundle.as_deref())?;
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
         activate_popup_target_macos(target_bundle.as_deref())?;
         tokio::time::sleep(tokio::time::Duration::from_millis(450)).await;
@@ -645,7 +612,6 @@ pub async fn copy_item_and_paste_from_popup(app: AppHandle, id: i64) -> Result<(
 
     #[cfg(not(target_os = "macos"))]
     {
-        set_clipboard_for_paste(&app, id, None)?;
         tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
         return send_paste_shortcut();
     }
