@@ -64,6 +64,92 @@
       await invoke("set_setting", { key: "auto_mask_secrets", value: autoMaskSecrets ? "1" : "0" });
     } catch (e) { showToast("Failed to save setting", "error"); }
   }
+
+  // Transforms shared by "Copy as" (F3) and per-app paste rules (F5).
+  const TRANSFORM_OPTIONS: { value: string; label: string }[] = [
+    { value: "trim", label: "Plain text (trim)" },
+    { value: "uppercase", label: "UPPERCASE" },
+    { value: "lowercase", label: "lowercase" },
+    { value: "slugify", label: "Slugify" },
+    { value: "json_pretty", label: "Pretty JSON" },
+    { value: "json_minify", label: "Minify JSON" },
+    { value: "base64_encode", label: "Base64 encode" },
+    { value: "base64_decode", label: "Base64 decode" },
+    { value: "url_encode", label: "URL encode" },
+    { value: "url_decode", label: "URL decode" },
+  ];
+
+  // ── F3: Copy as / paste as ──────────────────────────────
+  let copyAsTarget = $state<ClipboardItem | null>(null);
+  async function copyAsItem(item: ClipboardItem, transform: string, label: string) {
+    try {
+      await invoke("copy_as", { id: item.id, transform });
+      copyAsTarget = null;
+      showToast(`Copied as ${label}`, "success");
+    } catch (e) { showToast("Failed: " + e, "error"); }
+  }
+
+  // ── F4: Configurable retention ──────────────────────────
+  let retentionDays = $state(0); // 0 = forever
+  let retentionMax = $state(0);  // 0 = unlimited
+  const RETENTION_DAYS = [
+    { value: 0, label: "Forever" }, { value: 7, label: "7 days" },
+    { value: 30, label: "30 days" }, { value: 90, label: "90 days" },
+  ];
+  const RETENTION_MAX = [
+    { value: 0, label: "Unlimited" }, { value: 500, label: "500" },
+    { value: 1000, label: "1,000" }, { value: 5000, label: "5,000" },
+  ];
+  async function loadRetention() {
+    try {
+      const d = (await invoke("get_setting", { key: "retention_days" })) as string | null;
+      retentionDays = d ? parseInt(d) || 0 : 0;
+      const m = (await invoke("get_setting", { key: "retention_max_items" })) as string | null;
+      retentionMax = m ? parseInt(m) || 0 : 0;
+    } catch { /* defaults */ }
+  }
+  async function applyRetention(days: number, max: number) {
+    retentionDays = days; retentionMax = max;
+    try {
+      await invoke("set_setting", { key: "retention_days", value: String(days) });
+      await invoke("set_setting", { key: "retention_max_items", value: String(max) });
+      await invoke("manual_cleanup");
+      await refreshAll();
+      showToast("Retention updated", "success");
+    } catch (e) { showToast("Failed: " + e, "error"); }
+  }
+
+  // ── F5: Per-app paste rules ─────────────────────────────
+  let pasteRules = $state<{ bundle: string; transform: string }[]>([]);
+  let newRuleBundle = $state("");
+  let newRuleTransform = $state("trim");
+  async function loadPasteRules() {
+    try {
+      const j = (await invoke("get_setting", { key: "paste_rules" })) as string | null;
+      const m = j ? JSON.parse(j) : {};
+      pasteRules = Object.entries(m).map(([bundle, transform]) => ({ bundle, transform: transform as string }));
+    } catch { pasteRules = []; }
+  }
+  async function savePasteRules() {
+    const m: Record<string, string> = {};
+    for (const r of pasteRules) if (r.bundle.trim()) m[r.bundle.trim()] = r.transform;
+    try { await invoke("set_setting", { key: "paste_rules", value: JSON.stringify(m) }); }
+    catch (e) { showToast("Failed to save rules", "error"); }
+  }
+  async function addPasteRule() {
+    const b = newRuleBundle.trim();
+    if (!b) return;
+    pasteRules = [...pasteRules.filter(r => r.bundle !== b), { bundle: b, transform: newRuleTransform }];
+    newRuleBundle = "";
+    await savePasteRules();
+  }
+  async function removePasteRule(bundle: string) {
+    pasteRules = pasteRules.filter(r => r.bundle !== bundle);
+    await savePasteRules();
+  }
+  function transformLabel(v: string): string {
+    return TRANSFORM_OPTIONS.find(t => t.value === v)?.label ?? v;
+  }
   let currentPlatform = $state<string>("macos");
   let macAccessibilityGranted = $state(true);
   let checkingMacAccessibility = $state(false);
@@ -765,7 +851,7 @@
               Export All (.txt)
             </button>
             <div class="h-px bg-overlay/[0.05] my-1 mx-3"></div>
-            <button onclick={() => { showMoreMenu=false; currentTheme = getStoredTheme(); loadAutoMask(); showSettingsModal=true; }} class="menu-item">
+            <button onclick={() => { showMoreMenu=false; currentTheme = getStoredTheme(); loadAutoMask(); loadRetention(); loadPasteRules(); showSettingsModal=true; }} class="menu-item">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               Settings
             </button>
@@ -1201,6 +1287,12 @@
         onclick={(e) => { e.stopPropagation(); addToStack(item); }} title="Add to paste stack">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
       </button>
+      {#if item.content_type !== "image" && item.content_type !== "files" && !item.is_sensitive}
+        <button class="p-1.5 rounded-lg transition-all text-fg/40 hover:text-[#AEB291] hover:bg-overlay/[0.07]"
+          onclick={(e) => { e.stopPropagation(); copyAsTarget = item; }} title="Copy as…">
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </button>
+      {/if}
       {#if item.content_type !== "image" && item.content_type !== "files"}
         <button class="p-1.5 rounded-lg transition-all hover:bg-overlay/[0.07] {item.is_sensitive ? 'text-amber-400' : 'text-fg/40 hover:text-fg/75'}"
           onclick={(e) => { e.stopPropagation(); toggleSensitive(item); }} title={item.is_sensitive ? "Unmask & decrypt" : "Mask & encrypt"}>
@@ -1519,7 +1611,7 @@
         <div><h3 class="modal-title mb-0">Settings</h3><p class="text-[11px] text-fg/30 mt-0.5">Appearance &amp; preferences</p></div>
         <button onclick={() => (showSettingsModal = false)} class="text-fg/25 hover:text-fg/70 transition-colors" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
-      <div class="p-5 space-y-4">
+      <div class="p-5 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
         <div class="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg/20">Theme</div>
         <div class="flex items-start justify-between gap-4">
           <p class="text-[12px] text-fg/45 leading-relaxed pt-1.5 max-w-[180px]">Choose how Ortu looks. <span class="text-fg/65">System</span> follows your OS appearance.</p>
@@ -1554,9 +1646,74 @@
             <span class="absolute top-[2px] left-[2px] h-[18px] w-[18px] rounded-full bg-white shadow transition-transform {autoMaskSecrets ? 'translate-x-[16px]' : ''}"></span>
           </button>
         </div>
+
+        <!-- History retention (F4) -->
+        <div class="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg/20 pt-1">History</div>
+        <div class="p-3.5 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05] space-y-3">
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-[12px] text-fg/55">Keep history for</span>
+            <div class="flex shrink-0 rounded-lg bg-overlay/[0.05] border border-overlay/[0.08] p-0.5">
+              {#each RETENTION_DAYS as opt}
+                <button onclick={() => applyRetention(opt.value, retentionMax)}
+                  class="px-2 py-1 rounded-md text-[11px] font-medium transition-colors {retentionDays === opt.value ? 'bg-[#FF8A3D] text-black' : 'text-fg/55 hover:text-fg/85'}">{opt.label}</button>
+              {/each}
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-[12px] text-fg/55">Max items</span>
+            <div class="flex shrink-0 rounded-lg bg-overlay/[0.05] border border-overlay/[0.08] p-0.5">
+              {#each RETENTION_MAX as opt}
+                <button onclick={() => applyRetention(retentionDays, opt.value)}
+                  class="px-2 py-1 rounded-md text-[11px] font-medium transition-colors {retentionMax === opt.value ? 'bg-[#FF8A3D] text-black' : 'text-fg/55 hover:text-fg/85'}">{opt.label}</button>
+              {/each}
+            </div>
+          </div>
+          <p class="text-[10px] text-fg/30 leading-relaxed">Pinned items and items in your groups are always kept — retention only clears ungrouped history.</p>
+        </div>
+
+        <!-- Per-app paste rules (F5) -->
+        <div class="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg/20 pt-1">Per-app paste rules</div>
+        <div class="p-3.5 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05] space-y-2.5">
+          <p class="text-[11px] text-fg/35 leading-relaxed">Auto-transform text when pasting into a specific app (via the popup). Use the app's bundle id, e.g. <span class="text-fg/55">com.microsoft.VSCode</span>.{currentPlatform === "macos" ? "" : " (macOS only)"}</p>
+          {#each pasteRules as rule}
+            <div class="flex items-center gap-2">
+              <span class="flex-1 min-w-0 truncate text-[12px] text-fg/65">{rule.bundle}</span>
+              <span class="text-[10px] text-[#AEB291]/80 shrink-0">{transformLabel(rule.transform)}</span>
+              <button onclick={() => removePasteRule(rule.bundle)} aria-label="Remove rule" class="shrink-0 text-fg/30 hover:text-[#FF8A3D] transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          {/each}
+          <div class="flex items-center gap-2">
+            <input type="text" bind:value={newRuleBundle} placeholder="com.example.app" class="modal-input flex-1 min-w-0"
+              onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPasteRule(); } }} />
+            <select bind:value={newRuleTransform} class="modal-input shrink-0 w-[120px]">
+              {#each TRANSFORM_OPTIONS as t}<option value={t.value}>{t.label}</option>{/each}
+            </select>
+            <button onclick={addPasteRule} class="btn-primary shrink-0">Add</button>
+          </div>
+        </div>
       </div>
       <div class="px-5 py-3 border-t border-overlay/[0.05] flex justify-end">
         <button onclick={() => (showSettingsModal = false)} class="btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Copy as… (paste-as transforms) -->
+{#if copyAsTarget}
+  <div class="modal-backdrop" onclick={(e) => { if (e.target === e.currentTarget) copyAsTarget = null; }} onkeydown={(e) => { if (e.key === "Escape") copyAsTarget = null; }} role="dialog" aria-modal="true" tabindex="-1">
+    <div class="modal-box w-full max-w-xs">
+      <div class="px-5 py-4 border-b border-overlay/[0.06] flex items-center justify-between">
+        <div><h3 class="modal-title mb-0">Copy as…</h3><p class="text-[11px] text-fg/30 mt-0.5">Transform, then copy to clipboard</p></div>
+        <button onclick={() => (copyAsTarget = null)} class="text-fg/25 hover:text-fg/70 transition-colors" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <div class="p-3 grid grid-cols-2 gap-1.5">
+        {#each TRANSFORM_OPTIONS as t}
+          <button onclick={() => copyAsTarget && copyAsItem(copyAsTarget, t.value, t.label)}
+            class="px-3 py-2 rounded-lg text-[12px] text-fg/70 bg-overlay/[0.04] hover:bg-overlay/[0.08] hover:text-fg/90 border border-overlay/[0.06] transition-colors text-left">{t.label}</button>
+        {/each}
       </div>
     </div>
   </div>

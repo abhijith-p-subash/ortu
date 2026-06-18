@@ -1132,8 +1132,68 @@ impl ClipboardDB {
     }
 
     pub fn prune_expired(&self) -> Result<()> {
-        // Retention policy: keep clipboard entries for the whole running session.
-        // Cleanup by age is intentionally disabled.
+        // Configurable retention (settings in app_meta). Pinned items are always
+        // kept and never count toward the max-items limit.
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let get_int = |key: &str| -> Option<i64> {
+            conn.query_row(
+                "SELECT value FROM app_meta WHERE key = ?1",
+                params![key],
+                |row| row.get::<_, String>(0),
+            )
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+        };
+
+        // Retention only ever removes "ephemeral" items: NOT pinned and NOT in
+        // any user-defined (non-system) group. Pinned and grouped items are
+        // kept forever.
+        let not_curated = "is_permanent = 0
+             AND NOT EXISTS (
+                 SELECT 1 FROM item_groups ig
+                 JOIN groups g ON g.id = ig.group_id
+                 WHERE ig.item_id = history.id AND g.is_system = 0
+             )";
+
+        // Age-based: delete ephemeral items older than N days (0 = keep forever).
+        if let Some(days) = get_int("retention_days") {
+            if days > 0 {
+                conn.execute(
+                    &format!(
+                        "DELETE FROM history
+                         WHERE {not_curated}
+                           AND created_at < datetime('now', '-{days} days')"
+                    ),
+                    [],
+                )?;
+            }
+        }
+
+        // Count-based: keep only the newest N ephemeral items (0 = unlimited).
+        if let Some(max) = get_int("retention_max_items") {
+            if max > 0 {
+                conn.execute(
+                    &format!(
+                        "DELETE FROM history
+                         WHERE {not_curated}
+                           AND id NOT IN (
+                             SELECT id FROM history h2
+                             WHERE h2.is_permanent = 0
+                               AND NOT EXISTS (
+                                 SELECT 1 FROM item_groups ig
+                                 JOIN groups g ON g.id = ig.group_id
+                                 WHERE ig.item_id = h2.id AND g.is_system = 0
+                               )
+                             ORDER BY h2.created_at DESC
+                             LIMIT ?1
+                           )"
+                    ),
+                    params![max],
+                )?;
+            }
+        }
+
+        let _ = Self::prune_orphan_blobs(&conn);
         Ok(())
     }
 

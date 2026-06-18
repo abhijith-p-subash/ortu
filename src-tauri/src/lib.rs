@@ -146,6 +146,8 @@ pub fn run() {
                     return Err(e.into());
                 }
             }
+            // Apply retention limits at startup (also runs hourly).
+            let _ = db.prune_expired();
             app.manage(db);
             app.manage(PopupPasteTarget(Mutex::new(None)));
             app.manage(PasteStack(Mutex::new(Vec::new())));
@@ -262,6 +264,7 @@ pub fn run() {
             commands::stack_clear,
             commands::stack_list,
             commands::paste_next_from_stack,
+            commands::copy_as,
             commands::copy_item_and_paste,
             commands::copy_item_and_paste_from_popup,
             commands::get_macos_accessibility_status,
