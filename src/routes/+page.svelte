@@ -238,6 +238,16 @@
     older: IndexedItem[];
   }
 
+  // SQLite stores created_at as UTC ("YYYY-MM-DD HH:MM:SS", no timezone). JS
+  // would parse that space-separated string as *local* time, shifting it by the
+  // timezone offset — so treat it explicitly as UTC.
+  function toLocalDate(s: string): Date {
+    if (s && s.includes(" ") && !s.includes("T")) {
+      return new Date(s.replace(" ", "T") + "Z");
+    }
+    return new Date(s);
+  }
+
   let groupedHistory = $derived.by((): GroupedHistory => {
     const now = new Date();
     const todayStart    = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -246,7 +256,7 @@
     const result: GroupedHistory = { pinned: [], today: [], yesterday: [], thisWeek: [], older: [] };
     displayHistory.forEach((item, index) => {
       if (item.is_permanent) { result.pinned.push({ item, index }); return; }
-      const d = new Date(item.created_at);
+      const d = toLocalDate(item.created_at);
       if      (d >= todayStart)  result.today.push({ item, index });
       else if (d >= yesterStart) result.yesterday.push({ item, index });
       else if (d >= weekStart)   result.thisWeek.push({ item, index });
@@ -285,7 +295,8 @@
   // ── Helpers ────────────────────────────────────────────
 
   function relativeTime(dateStr: string): string {
-    const diff = Date.now() - new Date(dateStr).getTime();
+    const date = toLocalDate(dateStr);
+    const diff = Date.now() - date.getTime();
     const m = Math.floor(diff / 60_000);
     const h = Math.floor(diff / 3_600_000);
     const d = Math.floor(diff / 86_400_000);
@@ -293,8 +304,8 @@
     if (m < 60) return `${m}m ago`;
     if (h < 24) return `${h}h ago`;
     if (d === 1) return "Yesterday";
-    if (d < 7)  return new Date(dateStr).toLocaleDateString([], { weekday: "short" });
-    return new Date(dateStr).toLocaleDateString([], { month: "short", day: "numeric" });
+    if (d < 7)  return date.toLocaleDateString([], { weekday: "short" });
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
   }
 
   function parseUrl(content: string): { domain: string; path: string } | null {

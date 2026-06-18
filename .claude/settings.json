@@ -41,7 +41,9 @@
       "Bash(screencapture -x -R235,73,1000,130 /tmp/stack_hdr.png)",
       "Bash(sips -Z 1400 /tmp/stack_hdr.png --out /tmp/stack_hdr_z.png)",
       "Bash(sed -n '/pub fn prune_expired/,/^    }/p' src-tauri/src/db.rs)",
-      "Bash(sed -n '/pub async fn copy_item_and_paste_from_popup/,/^}/p' src-tauri/src/commands.rs)"
+      "Bash(sed -n '/pub async fn copy_item_and_paste_from_popup/,/^}/p' src-tauri/src/commands.rs)",
+      "Bash(rm -f src-tauri/examples/timecheck.rs)",
+      "Bash(rmdir src-tauri/examples)"
     ],
     "additionalDirectories": [
       "/Users/abhijithpsubash"
