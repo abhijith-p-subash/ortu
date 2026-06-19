@@ -267,14 +267,15 @@
 
   // ── Derived: sidebar counts ────────────────────────────
   let sidebarCounts = $derived.by(() => {
-    const all  = allItems.length;
-    const url  = allItems.filter(i => i.category === "URL").length;
-    const text = allItems.filter(i => i.category === "Text").length;
+    const all    = allItems.length;
+    const url    = allItems.filter(i => i.category === "URL").length;
+    const text   = allItems.filter(i => i.category === "Text").length;
+    const files  = allItems.filter(i => i.content_type === "files").length;
     const groupCounts: Record<string, number> = {};
     for (const g of groups) {
       groupCounts[g] = allItems.filter(i => i.groups?.includes(g)).length;
     }
-    return { all, url, text, groups: groupCounts };
+    return { all, url, text, files, groups: groupCounts };
   });
 
   // ── Platform / version ─────────────────────────────────
@@ -538,7 +539,7 @@
 
   async function openExportModal() {
     exportSelectedGroups = [];
-    if (selectedGroup && !["URL","Dev","Code","Images","Text"].includes(selectedGroup))
+    if (selectedGroup && !["URL","Dev","Code","Images","Text","Files"].includes(selectedGroup))
       exportSelectedGroups = [selectedGroup];
     showExportModal = true;
   }
@@ -1020,6 +1021,26 @@
             {/if}
           </button>
         </div>
+
+        <!-- Files -->
+        <div class="relative flex items-center">
+          {#if selectedGroup === 'Files'}
+            <span class="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[18px] bg-[#AEB291] rounded-r-full pointer-events-none" aria-hidden="true"></span>
+          {/if}
+          <button
+            class="w-full flex items-center gap-2.5 pl-3 pr-2 py-[7px] rounded-lg text-[13px] transition-all {selectedGroup === 'Files' ? 'text-fg font-medium bg-overlay/[0.07]' : 'text-fg/52 hover:text-fg/80 hover:bg-overlay/[0.05]'}"
+            onclick={() => (selectedGroup = "Files")}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="{selectedGroup === 'Files' ? 'text-[#AEB291]' : 'text-fg/38'}">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span class="flex-1 min-w-0 truncate">Files</span>
+            {#if sidebarCounts.files > 0}
+              <span class="text-[10px] text-fg/32 tabular-nums shrink-0">{sidebarCounts.files}</span>
+            {/if}
+          </button>
+        </div>
+
       </nav>
 
       <!-- Groups section -->

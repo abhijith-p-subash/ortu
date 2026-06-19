@@ -386,10 +386,13 @@ impl ClipboardDB {
         let changed = previous.as_deref() != Some(boot_session_id);
 
         if changed {
-            // Keep pinned items and items explicitly assigned to at least one user group.
+            // On reboot, clear transient text history but keep: pinned items,
+            // items in a user (non-system) group, and captured images/files
+            // (intentional, harder-to-reacquire content).
             tx.execute(
                 "DELETE FROM history
                  WHERE is_permanent = 0
+                   AND content_type NOT IN ('image', 'files')
                    AND NOT EXISTS (
                      SELECT 1
                      FROM item_groups ig
@@ -681,6 +684,15 @@ impl ClipboardDB {
                         "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
                          FROM history h
                          WHERE h.content_type = 'image' AND h.raw_content LIKE ?1
+                         ORDER BY h.is_permanent DESC, h.created_at DESC
+                         LIMIT 100",
+                    )?;
+                    rows = stmt.query(params![search_pattern])?;
+                } else if group_name.eq_ignore_ascii_case("files") {
+                    stmt = conn.prepare(
+                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
+                         FROM history h
+                         WHERE h.content_type = 'files' AND h.raw_content LIKE ?1
                          ORDER BY h.is_permanent DESC, h.created_at DESC
                          LIMIT 100",
                     )?;
