@@ -7,6 +7,7 @@
   import { platform } from "@tauri-apps/plugin-os";
   import { getVersion } from "@tauri-apps/api/app";
   import { buildSearchQuery, clipPreview } from "$lib/filters";
+  import { getKeyLabels, getShortcutSections, getNamedShortcuts } from "$lib/shortcuts";
   import { checkForUpdates as runUpdateCheck, getOsInstallerUrl } from "$lib/updater";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { setTheme, getStoredTheme, type Theme } from "$lib/theme";
@@ -279,9 +280,11 @@
   });
 
   // ── Platform / version ─────────────────────────────────
-  let modKey  = $derived(currentPlatform === "macos" ? "Cmd"    : "Ctrl");
-  let deleteKey = $derived(currentPlatform === "macos" ? "⌫"  : "Backspace");
-  let altKey  = $derived(currentPlatform === "macos" ? "Option" : "Alt");
+  // OS-native key labels & full shortcut list — single source of truth in $lib/shortcuts.
+  let keyLabels = $derived(getKeyLabels(currentPlatform));
+  let shortcutSections = $derived(getShortcutSections(currentPlatform));
+  let namedShortcuts = $derived(getNamedShortcuts(currentPlatform));
+  let modKey  = $derived(keyLabels.mod);
 
   onMount(async () => {
     try {
@@ -683,7 +686,7 @@
 
   // ── Keyboard ───────────────────────────────────────────
   function handleKeydown(e: KeyboardEvent) {
-    // ⌘1–9: instant copy
+    // Mod(Cmd/Ctrl)+1–9: instant copy
     const num = parseInt(e.key);
     if (!isNaN(num) && num >= 1 && num <= 9 && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -816,7 +819,7 @@
         <button
           onclick={() => { showStackPanel = !showStackPanel; if (showStackPanel) loadStack(); }}
           aria-label="Paste stack"
-          title="Paste stack (⌥⇧V to paste next)"
+          title="Paste stack ({namedShortcuts.pasteStack} to paste next)"
           class=" relative h-[26px] w-[26px] flex items-center justify-center rounded-md transition-all {pasteStack.length > 0 ? 'text-[#FF8A3D] hover:bg-[#FF8A3D]/[0.12]' : 'text-fg/55 hover:text-fg/90 hover:bg-overlay/[0.09]'}"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
@@ -853,7 +856,7 @@
               </div>
             {/if}
             <div class="px-3 py-2 border-t border-overlay/[0.07] bg-overlay/[0.02]">
-              <p class="text-[10px] text-fg/40 leading-relaxed">Press <kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-fg/60 text-[9px] font-semibold">⌥⇧V</kbd> in any app to paste the next item, in order.</p>
+              <p class="text-[10px] text-fg/40 leading-relaxed">Press <kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-fg/60 text-[9px] font-semibold">{namedShortcuts.pasteStack}</kbd> in any app to paste the next item, in order.</p>
             </div>
           </div>
         {/if}
@@ -1138,7 +1141,7 @@
               </p>
               <div class="mt-5 space-y-2 w-full text-left">
                 <div class="flex items-center gap-3 p-3 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05]">
-                  <kbd class="px-2 py-1 bg-black/40 rounded-lg border border-overlay/[0.08] text-[10px] text-fg/35 font-mono shrink-0">{altKey}+V</kbd>
+                  <kbd class="px-2 py-1 bg-black/40 rounded-lg border border-overlay/[0.08] text-[10px] text-fg/35 font-mono shrink-0">{namedShortcuts.openPopup}</kbd>
                   <span class="text-[11px] text-fg/30">Open quick popup anywhere</span>
                 </div>
                 <div class="flex items-center gap-3 p-3 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05]">
@@ -1591,35 +1594,19 @@
         <button onclick={() => (showHelpModal = false)} class="text-fg/25 hover:text-fg/70 transition-colors" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div class="p-5 max-h-[65vh] overflow-y-auto custom-scrollbar space-y-5">
-        <div>
-          <h4 class="section-label mb-3">Opening</h4>
-          <div class="space-y-1.5">
-            <div class="flex items-start gap-3 p-3 bg-overlay/[0.03] rounded-xl">
-              <code class="text-[11px] text-fg/30 shrink-0 mt-0.5">{altKey}+V</code>
-              <div><div class="text-[12px] font-medium text-fg/65">Quick Popup</div><div class="text-[11px] text-fg/30 mt-0.5">Open quick access popup anywhere</div></div>
+        {#each shortcutSections as section}
+          <div>
+            <h4 class="section-label mb-2.5">{section.title}</h4>
+            <div class="space-y-px">
+              {#each section.items as item}
+                <div class="flex items-center justify-between px-2 py-[7px] hover:bg-overlay/[0.03] rounded-lg">
+                  <span class="text-[12px] text-fg/45">{item.label}</span>
+                  <kbd class="px-2 py-0.5 bg-black/40 rounded border border-overlay/[0.07] text-[10px] text-fg/30 font-mono">{item.keys}</kbd>
+                </div>
+              {/each}
             </div>
           </div>
-        </div>
-        <div>
-          <h4 class="section-label mb-2.5">Shortcuts</h4>
-          <div class="space-y-px">
-            {#each [
-              ["Copy item", "Click or Enter"],
-              [`Quick copy 1–9`, `${modKey}+1–9`],
-              ["Navigate", "↑ / ↓"],
-              ["Delete item", `Del / ${modKey}+${deleteKey}`],
-              ["Pin / Unpin", `${modKey}+P`],
-              ["Add to group", `${modKey}+C`],
-              ["Manage groups", `${modKey}+G`],
-              ["Close window", "Esc"],
-            ] as [label, key]}
-              <div class="flex items-center justify-between px-2 py-[7px] hover:bg-overlay/[0.03] rounded-lg">
-                <span class="text-[12px] text-fg/45">{label}</span>
-                <kbd class="px-2 py-0.5 bg-black/40 rounded border border-overlay/[0.07] text-[10px] text-fg/30 font-mono">{key}</kbd>
-              </div>
-            {/each}
-          </div>
-        </div>
+        {/each}
       </div>
       <div class="px-5 py-3 border-t border-overlay/[0.05] flex justify-end">
         <button onclick={() => (showHelpModal = false)} class="btn-primary">Got it</button>

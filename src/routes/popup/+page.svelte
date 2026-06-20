@@ -5,6 +5,8 @@
   import { listen } from "@tauri-apps/api/event";
   import { buildSearchQuery, clipPreview } from "$lib/filters";
   import { applyTheme, getStoredTheme } from "$lib/theme";
+  import { platform } from "@tauri-apps/plugin-os";
+  import { getNamedShortcuts } from "$lib/shortcuts";
   import "../../app.css";
 
   let history = $state<ClipboardItem[]>([]);
@@ -14,6 +16,9 @@
   let container = $state<HTMLDivElement | null>(null);
   let searchInput = $state<HTMLInputElement | null>(null);
   let shell = $state<HTMLDivElement | null>(null);
+
+  let currentPlatform = $state<string>("macos");
+  let namedShortcuts = $derived(getNamedShortcuts(currentPlatform));
 
   let currentCategory = $state<string | null>(null);
   let showGroupSelector = $state<number | null>(null);
@@ -128,7 +133,7 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    // ⌘1–9: instant copy by position
+    // Mod(Cmd/Ctrl)+1–9: instant copy by position
     const num = parseInt(e.key);
     if (!isNaN(num) && num >= 1 && num <= 9 && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -224,6 +229,7 @@
 
     const setupListeners = async () => {
       try {
+        try { currentPlatform = await platform(); } catch { /* keep default */ }
         const unFocus = await listen("tauri://focus", () => {
           applyTheme(getStoredTheme()); // pick up theme changes made in the main window
           currentCategory = null; searchQuery = ""; selectedIndex = 0; hoverPreview = null;
@@ -312,7 +318,7 @@
     <div class="flex items-center gap-2 px-3.5 py-1.5 bg-[#FF8A3D]/[0.08] border-b border-[#FF8A3D]/[0.15] shrink-0">
       <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[#FF8A3D] shrink-0"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
       <span class="text-[11px] text-fg/65 flex-1 min-w-0 truncate">
-        <span class="font-semibold text-[#FF8A3D]">{stackCount}</span> in paste stack · <kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-[9px] font-semibold text-fg/60">⌥⇧V</kbd> to paste next
+        <span class="font-semibold text-[#FF8A3D]">{stackCount}</span> in paste stack · <kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-[9px] font-semibold text-fg/60">{namedShortcuts.pasteStack}</kbd> to paste next
       </span>
       <button onclick={clearStack} class="text-[10px] text-fg/40 hover:text-[#FF8A3D] transition-colors shrink-0">Clear</button>
     </div>

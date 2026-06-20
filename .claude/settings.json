@@ -43,7 +43,8 @@
       "Bash(sed -n '/pub fn prune_expired/,/^    }/p' src-tauri/src/db.rs)",
       "Bash(sed -n '/pub async fn copy_item_and_paste_from_popup/,/^}/p' src-tauri/src/commands.rs)",
       "Bash(rm -f src-tauri/examples/timecheck.rs)",
-      "Bash(rmdir src-tauri/examples)"
+      "Bash(rmdir src-tauri/examples)",
+      "Bash(echo \"=== exit grep $? \\(1=none found\\) ===\")"
     ],
     "additionalDirectories": [
       "/Users/abhijithpsubash"
