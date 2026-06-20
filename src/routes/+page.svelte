@@ -812,12 +812,12 @@
     </div>
     <div class="flex items-center gap-1">
       <!-- Paste stack -->
-      <div class="relative">
+      <div class="relative mr-1">
         <button
           onclick={() => { showStackPanel = !showStackPanel; if (showStackPanel) loadStack(); }}
           aria-label="Paste stack"
           title="Paste stack (⌥⇧V to paste next)"
-          class="relative h-[26px] w-[26px] flex items-center justify-center rounded-md transition-all {pasteStack.length > 0 ? 'text-[#FF8A3D] hover:bg-[#FF8A3D]/[0.12]' : 'text-fg/55 hover:text-fg/90 hover:bg-overlay/[0.09]'}"
+          class=" relative h-[26px] w-[26px] flex items-center justify-center rounded-md transition-all {pasteStack.length > 0 ? 'text-[#FF8A3D] hover:bg-[#FF8A3D]/[0.12]' : 'text-fg/55 hover:text-fg/90 hover:bg-overlay/[0.09]'}"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
           {#if pasteStack.length > 0}
