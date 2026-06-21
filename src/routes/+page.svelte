@@ -7,10 +7,10 @@
   import { platform } from "@tauri-apps/plugin-os";
   import { getVersion } from "@tauri-apps/api/app";
   import { buildSearchQuery, clipPreview } from "$lib/filters";
-  import { getKeyLabels, getShortcutSections, getNamedShortcuts, SHORTCUT_ACTIONS, prettyAccelerator, acceleratorFromEvent } from "$lib/shortcuts";
+  import { getKeyLabels, getShortcutSections, getNamedShortcuts, prettyAccelerator } from "$lib/shortcuts";
   import { checkForUpdates as runUpdateCheck, getOsInstallerUrl } from "$lib/updater";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { setTheme, getStoredTheme, type Theme } from "$lib/theme";
+  import { goto } from "$app/navigation";
   import "../app.css";
 
   // ── Core state ─────────────────────────────────────────
@@ -41,30 +41,6 @@
   let processingIO = $state(false);
   let showHelpModal = $state(false);
   let showAboutModal = $state(false);
-  let showSettingsModal = $state(false);
-  let currentTheme = $state<Theme>("dark");
-  const THEME_OPTIONS: { value: Theme; label: string }[] = [
-    { value: "system", label: "System" },
-    { value: "light", label: "Light" },
-    { value: "dark", label: "Dark" },
-  ];
-  function selectTheme(t: Theme) {
-    currentTheme = t;
-    setTheme(t);
-  }
-  let autoMaskSecrets = $state(false);
-  async function loadAutoMask() {
-    try {
-      const v = (await invoke("get_setting", { key: "auto_mask_secrets" })) as string | null;
-      autoMaskSecrets = v === "1";
-    } catch { /* default off */ }
-  }
-  async function toggleAutoMask() {
-    autoMaskSecrets = !autoMaskSecrets;
-    try {
-      await invoke("set_setting", { key: "auto_mask_secrets", value: autoMaskSecrets ? "1" : "0" });
-    } catch (e) { showToast("Failed to save setting", "error"); }
-  }
 
   // Transforms shared by "Copy as" (F3) and per-app paste rules (F5).
   const TRANSFORM_OPTIONS: { value: string; label: string }[] = [
@@ -90,58 +66,12 @@
     } catch (e) { showToast("Failed: " + e, "error"); }
   }
 
-  // ── F4: Configurable retention ──────────────────────────
-  let retentionDays = $state(0); // 0 = forever
-  let retentionMax = $state(0);  // 0 = unlimited
-  const RETENTION_DAYS = [
-    { value: 0, label: "Forever" }, { value: 7, label: "7 days" },
-    { value: 30, label: "30 days" }, { value: 90, label: "90 days" },
-  ];
-  const RETENTION_MAX = [
-    { value: 0, label: "Unlimited" }, { value: 500, label: "500" },
-    { value: 1000, label: "1,000" }, { value: 5000, label: "5,000" },
-  ];
-  async function loadRetention() {
-    try {
-      const d = (await invoke("get_setting", { key: "retention_days" })) as string | null;
-      retentionDays = d ? parseInt(d) || 0 : 0;
-      const m = (await invoke("get_setting", { key: "retention_max_items" })) as string | null;
-      retentionMax = m ? parseInt(m) || 0 : 0;
-    } catch { /* defaults */ }
-  }
-  async function applyRetention(days: number, max: number) {
-    retentionDays = days; retentionMax = max;
-    try {
-      await invoke("set_setting", { key: "retention_days", value: String(days) });
-      await invoke("set_setting", { key: "retention_max_items", value: String(max) });
-      await invoke("manual_cleanup");
-      await refreshAll();
-      showToast("Retention updated", "success");
-    } catch (e) { showToast("Failed: " + e, "error"); }
-  }
-
-  // ── Global shortcuts (user-rebindable) ──────────────────
+  // ── Global shortcuts (read-only here; edited on the Settings page) ───────
+  // Loaded for display so the Help section & hints reflect the user's bindings.
   let customShortcuts = $state<Record<string, string>>({});
-  let capturingAction = $state<string | null>(null);
   async function loadShortcuts() {
     try { customShortcuts = (await invoke("get_shortcuts")) as Record<string, string>; }
     catch (e) { console.error("Failed to load shortcuts:", e); }
-  }
-  function startCapture(action: string) { capturingAction = action; }
-  async function applyCapturedShortcut(action: string, accelerator: string) {
-    capturingAction = null;
-    try {
-      await invoke("set_shortcut", { action, accelerator });
-      await loadShortcuts();
-      showToast("Shortcut updated", "success");
-    } catch (e) { showToast(String(e), "error"); }
-  }
-  async function restoreDefaultShortcuts() {
-    capturingAction = null;
-    try {
-      customShortcuts = (await invoke("reset_shortcuts")) as Record<string, string>;
-      showToast("Shortcuts restored to defaults", "success");
-    } catch (e) { showToast("Failed to restore: " + e, "error"); }
   }
 
   // ── Snippets (with smart variables) ─────────────────────
@@ -333,7 +263,6 @@
 
   onMount(async () => {
     try {
-      currentTheme = getStoredTheme();
       currentPlatform = await platform();
       appVersion = await getVersion();
       await loadShortcuts();
@@ -732,17 +661,6 @@
 
   // ── Keyboard ───────────────────────────────────────────
   function handleKeydown(e: KeyboardEvent) {
-    // Shortcut-capture mode (Settings → Shortcuts): swallow the keypress and
-    // turn it into an accelerator instead of running normal actions.
-    if (capturingAction && showSettingsModal) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.key === "Escape") { capturingAction = null; return; }
-      const accel = acceleratorFromEvent(e);
-      if (accel) applyCapturedShortcut(capturingAction, accel);
-      return;
-    }
-
     // Mod(Cmd/Ctrl)+1–9: instant copy
     const num = parseInt(e.key);
     if (!isNaN(num) && num >= 1 && num <= 9 && (e.metaKey || e.ctrlKey)) {
@@ -901,7 +819,7 @@
             </div>
             {#if pasteStack.length === 0}
               <div class="px-3 py-5 text-center text-[11px] text-fg/35">
-                Stack is empty.<br />Use the stack icon on an item, or press <kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-fg/60 text-[9px] font-semibold">{globalLabels.copy_stack}</kbd> in any app to queue your selection.
+                Stack is empty.<br />Use the stack icon on an item, or press <kbd class="kbd px-1 py-0.5 text-[9px]">{globalLabels.copy_stack}</kbd> in any app to queue your selection.
               </div>
             {:else}
               <div class="max-h-64 overflow-y-auto custom-scrollbar py-1">
@@ -917,7 +835,7 @@
               </div>
             {/if}
             <div class="px-3 py-2 border-t border-overlay/[0.07] bg-overlay/[0.02]">
-              <p class="text-[10px] text-fg/40 leading-relaxed"><kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-fg/60 text-[9px] font-semibold">{globalLabels.copy_stack}</kbd> queues your selection · <kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-fg/60 text-[9px] font-semibold">{globalLabels.paste_stack}</kbd> pastes the next item, in order.</p>
+              <p class="text-[10px] text-fg/40 leading-relaxed"><kbd class="kbd px-1 py-0.5 text-[9px]">{globalLabels.copy_stack}</kbd> queues your selection · <kbd class="kbd px-1 py-0.5 text-[9px]">{globalLabels.paste_stack}</kbd> pastes the next item, in order.</p>
             </div>
           </div>
         {/if}
@@ -928,6 +846,14 @@
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add
+      </button>
+      <button
+        onclick={() => goto("/settings")}
+        aria-label="Settings"
+        title="Settings"
+        class="h-[26px] w-[26px] flex items-center justify-center rounded-md text-fg/55 hover:text-fg/90 hover:bg-overlay/[0.09] transition-all"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
       <div class="relative">
         <button
@@ -961,11 +887,7 @@
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
               Snippets
             </button>
-            <button onclick={() => { showMoreMenu=false; currentTheme = getStoredTheme(); capturingAction=null; loadAutoMask(); loadRetention(); loadShortcuts(); showSettingsModal=true; }} class="menu-item">
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              Settings
-            </button>
-            <button onclick={() => { showMoreMenu=false; showHelpModal=true; }} class="menu-item">
+            <button onclick={() => { showMoreMenu=false; loadShortcuts(); showHelpModal=true; }} class="menu-item">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               Help
             </button>
@@ -1202,11 +1124,11 @@
               </p>
               <div class="mt-5 space-y-2 w-full text-left">
                 <div class="flex items-center gap-3 p-3 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05]">
-                  <kbd class="px-2 py-1 bg-black/40 rounded-lg border border-overlay/[0.08] text-[10px] text-fg/35 font-mono shrink-0">{globalLabels.open_popup}</kbd>
+                  <kbd class="kbd px-2 py-1 text-[10px] shrink-0">{globalLabels.open_popup}</kbd>
                   <span class="text-[11px] text-fg/30">Open quick popup anywhere</span>
                 </div>
                 <div class="flex items-center gap-3 p-3 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05]">
-                  <kbd class="px-2 py-1 bg-black/40 rounded-lg border border-overlay/[0.08] text-[10px] text-fg/35 font-mono shrink-0">{modKey}+1-9</kbd>
+                  <kbd class="kbd px-2 py-1 text-[10px] shrink-0">{modKey}+1-9</kbd>
                   <span class="text-[11px] text-fg/30">Instantly copy by position</span>
                 </div>
                 <div class="flex items-center gap-3 p-3 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05]">
@@ -1661,8 +1583,8 @@
             <div class="space-y-px">
               {#each section.items as item}
                 <div class="flex items-center justify-between px-2 py-[7px] hover:bg-overlay/[0.03] rounded-lg">
-                  <span class="text-[12px] text-fg/45">{item.label}</span>
-                  <kbd class="px-2 py-0.5 bg-black/40 rounded border border-overlay/[0.07] text-[10px] text-fg/30 font-mono">{item.keys}</kbd>
+                  <span class="text-[12px] text-fg/60">{item.label}</span>
+                  <kbd class="kbd px-2 py-0.5 text-[10px]">{item.keys}</kbd>
                 </div>
               {/each}
             </div>
@@ -1717,108 +1639,6 @@
   </div>
 {/if}
 
-<!-- Settings -->
-{#if showSettingsModal}
-  <div class="modal-backdrop" onclick={(e) => { if (e.target === e.currentTarget) showSettingsModal = false; }} onkeydown={(e) => { if (e.key === "Escape") showSettingsModal = false; }} role="dialog" aria-modal="true" tabindex="-1">
-    <div class="modal-box w-full max-w-md">
-      <div class="px-5 py-4 border-b border-overlay/[0.06] flex items-center justify-between">
-        <div><h3 class="modal-title mb-0">Settings</h3><p class="text-[11px] text-fg/30 mt-0.5">Appearance &amp; preferences</p></div>
-        <button onclick={() => (showSettingsModal = false)} class="text-fg/25 hover:text-fg/70 transition-colors" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-      </div>
-      <div class="p-5 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
-        <div class="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg/20">Theme</div>
-        <div class="flex items-start justify-between gap-4">
-          <p class="text-[12px] text-fg/45 leading-relaxed pt-1.5 max-w-[180px]">Choose how Ortu looks. <span class="text-fg/65">System</span> follows your OS appearance.</p>
-          <!-- Segmented 3-way theme control -->
-          <div role="radiogroup" aria-label="Theme" class="flex shrink-0 rounded-xl bg-overlay/[0.05] border border-overlay/[0.08] p-0.5">
-            {#each THEME_OPTIONS as opt}
-              <button
-                role="radio"
-                aria-checked={currentTheme === opt.value}
-                onclick={() => selectTheme(opt.value)}
-                class="px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors
-                  {currentTheme === opt.value ? 'bg-[#FF8A3D] text-black' : 'text-fg/55 hover:text-fg/85'}"
-              >{opt.label}</button>
-            {/each}
-          </div>
-        </div>
-
-        <!-- Privacy / sensitive data -->
-        <div class="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg/20 pt-1">Privacy</div>
-        <div class="flex items-start justify-between gap-4 p-3.5 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05]">
-          <div class="min-w-0">
-            <div class="text-[13px] font-medium text-fg/70">Auto-mask detected secrets</div>
-            <p class="text-[11px] text-fg/35 mt-0.5 leading-relaxed">Automatically encrypt &amp; mask copied passwords, API keys, tokens and SSH keys. You can always reveal and copy them back.</p>
-          </div>
-          <button
-            role="switch"
-            aria-checked={autoMaskSecrets}
-            aria-label="Toggle auto-mask secrets"
-            onclick={toggleAutoMask}
-            class="relative shrink-0 mt-0.5 h-[22px] w-[38px] rounded-full transition-colors {autoMaskSecrets ? 'bg-[#FF8A3D]' : 'bg-overlay/[0.12]'}"
-          >
-            <span class="absolute top-[2px] left-[2px] h-[18px] w-[18px] rounded-full bg-white shadow transition-transform {autoMaskSecrets ? 'translate-x-[16px]' : ''}"></span>
-          </button>
-        </div>
-
-        <!-- History retention (F4) -->
-        <div class="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg/20 pt-1">History</div>
-        <div class="p-3.5 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05] space-y-3">
-          <div class="flex items-center justify-between gap-3">
-            <span class="text-[12px] text-fg/55">Keep history for</span>
-            <div class="flex shrink-0 rounded-lg bg-overlay/[0.05] border border-overlay/[0.08] p-0.5">
-              {#each RETENTION_DAYS as opt}
-                <button onclick={() => applyRetention(opt.value, retentionMax)}
-                  class="px-2 py-1 rounded-md text-[11px] font-medium transition-colors {retentionDays === opt.value ? 'bg-[#FF8A3D] text-black' : 'text-fg/55 hover:text-fg/85'}">{opt.label}</button>
-              {/each}
-            </div>
-          </div>
-          <div class="flex items-center justify-between gap-3">
-            <span class="text-[12px] text-fg/55">Max items</span>
-            <div class="flex shrink-0 rounded-lg bg-overlay/[0.05] border border-overlay/[0.08] p-0.5">
-              {#each RETENTION_MAX as opt}
-                <button onclick={() => applyRetention(retentionDays, opt.value)}
-                  class="px-2 py-1 rounded-md text-[11px] font-medium transition-colors {retentionMax === opt.value ? 'bg-[#FF8A3D] text-black' : 'text-fg/55 hover:text-fg/85'}">{opt.label}</button>
-              {/each}
-            </div>
-          </div>
-          <p class="text-[10px] text-fg/30 leading-relaxed">Pinned items and items in your groups are always kept — retention only clears ungrouped history.</p>
-        </div>
-
-        <!-- Global shortcuts -->
-        <div class="flex items-center justify-between pt-1">
-          <div class="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg/20">Global Shortcuts</div>
-          <button onclick={restoreDefaultShortcuts} class="text-[10px] font-medium text-fg/40 hover:text-[#FF8A3D] transition-colors">Restore defaults</button>
-        </div>
-        <div class="bg-overlay/[0.03] rounded-xl border border-overlay/[0.05] divide-y divide-overlay/[0.05]">
-          {#each SHORTCUT_ACTIONS as action}
-            <div class="flex items-center justify-between gap-3 p-3.5">
-              <div class="min-w-0">
-                <div class="text-[13px] font-medium text-fg/70">{action.label}</div>
-                <p class="text-[11px] text-fg/35 mt-0.5 leading-relaxed">{action.description}</p>
-              </div>
-              {#if capturingAction === action.id}
-                <button onclick={() => (capturingAction = null)}
-                  class="shrink-0 h-[26px] px-3 rounded-lg border border-[#FF8A3D]/40 bg-[#FF8A3D]/[0.08] text-[11px] font-semibold text-[#FF8A3D] animate-pulse">
-                  Press keys… (Esc)
-                </button>
-              {:else}
-                <button onclick={() => startCapture(action.id)} title="Click, then press the new key combination"
-                  class="shrink-0 h-[26px] min-w-[64px] px-3 rounded-lg border border-overlay/[0.1] bg-overlay/[0.05] text-[12px] font-mono font-semibold text-fg/70 hover:border-[#FF8A3D]/40 hover:text-[#FF8A3D] transition-colors">
-                  {prettyAccelerator(customShortcuts[action.id] ?? "", currentPlatform)}
-                </button>
-              {/if}
-            </div>
-          {/each}
-        </div>
-        <p class="text-[10px] text-fg/30 leading-relaxed">Click a shortcut, then press a key combination (must include {modKey}, {keyLabels.alt}, or {keyLabels.shift}). If the OS or another app already uses it, the change is rejected.</p>
-      </div>
-      <div class="px-5 py-3 border-t border-overlay/[0.05] flex justify-end">
-        <button onclick={() => (showSettingsModal = false)} class="btn-primary">Done</button>
-      </div>
-    </div>
-  </div>
-{/if}
 
 <!-- Copy as… (paste-as transforms) -->
 {#if copyAsTarget}

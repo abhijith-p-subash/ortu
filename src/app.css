@@ -16,11 +16,11 @@
 }
 
 :root[data-theme="light"] {
-  --app:     244 245 247;
-  --surface: 255 255 255;
-  --raised:  236 238 241;
-  --fg:      26 29 36;
-  --overlay: 15 23 42;
+  --app:     222 226 233;   /* softer gray-blue page so white cards have contrast */
+  --surface: 252 253 255;
+  --raised:  233 236 241;
+  --fg:      17 22 31;       /* deeper ink for stronger text contrast */
+  --overlay: 17 24 39;
 }
 
 html,
@@ -86,6 +86,11 @@ body {
 /* ── Menu items ─────────────────────────────────────── */
 .menu-item {
   @apply w-full text-left px-3 py-[7px] text-[12px] text-fg/60 hover:text-fg/90 hover:bg-overlay/[0.06] flex items-center gap-2.5 transition-colors;
+}
+
+/* ── Keyboard chips (theme-aware, visible in light & dark) ── */
+.kbd {
+  @apply inline-flex items-center justify-center rounded-md border border-overlay/[0.16] bg-overlay/[0.08] text-fg/70 font-mono font-semibold;
 }
 
 /* ── Section headers (time groups, pinned) ──────────── */

@@ -330,7 +330,7 @@
     <div class="flex items-center gap-2 px-3.5 py-1.5 bg-[#FF8A3D]/[0.08] border-b border-[#FF8A3D]/[0.15] shrink-0">
       <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[#FF8A3D] shrink-0"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
       <span class="text-[11px] text-fg/65 flex-1 min-w-0 truncate">
-        <span class="font-semibold text-[#FF8A3D]">{stackCount}</span> in paste stack · <kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-[9px] font-semibold text-fg/60">{pasteStackLabel}</kbd> to paste next
+        <span class="font-semibold text-[#FF8A3D]">{stackCount}</span> in paste stack · <kbd class="kbd px-1 py-0.5 text-[9px]">{pasteStackLabel}</kbd> to paste next
       </span>
       <button onclick={clearStack} class="text-[10px] text-fg/40 hover:text-[#FF8A3D] transition-colors shrink-0">Clear</button>
     </div>
@@ -545,12 +545,12 @@
       {history.length} clips{currentCategory ? ` in ${currentCategory}` : categories.length > 0 ? ` · ${categories.length} groups` : ""}
     </span>
     <div class="flex items-center gap-3">
-      <span class="text-[9px] text-fg/15 flex items-center gap-1">
-        <kbd class="px-1 py-0.5 bg-overlay/[0.05] rounded text-[8px] border border-overlay/[0.07]">↵</kbd>
+      <span class="text-[9px] text-fg/35 flex items-center gap-1">
+        <kbd class="kbd px-1 py-0.5 text-[8px]">↵</kbd>
         paste
       </span>
-      <span class="text-[9px] text-fg/15 flex items-center gap-1">
-        <kbd class="px-1 py-0.5 bg-overlay/[0.05] rounded text-[8px] border border-overlay/[0.07]">esc</kbd>
+      <span class="text-[9px] text-fg/35 flex items-center gap-1">
+        <kbd class="kbd px-1 py-0.5 text-[8px]">esc</kbd>
         hide
       </span>
     </div>
