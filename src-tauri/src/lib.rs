@@ -280,8 +280,11 @@ pub fn run() {
                 }
             }
 
-            // ---------------- POPUP WINDOW SETUP ----------------
-            let _ = ensure_popup_window(app.handle());
+            // ---------------- POPUP WINDOW (LAZY) ----------------
+            // The popup WebView is created on first use (hotkey) instead of at
+            // startup, to cut launch time and idle memory (a second WebView is
+            // the largest idle cost). toggle_popup()/show_popup() build it on
+            // demand via ensure_popup_window().
 
             // ---------------- CLIPBOARD LISTENER ----------------
             startup_trace("setup: start clipboard listener");

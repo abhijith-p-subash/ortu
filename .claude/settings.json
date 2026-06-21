@@ -45,7 +45,8 @@
       "Bash(rm -f src-tauri/examples/timecheck.rs)",
       "Bash(rmdir src-tauri/examples)",
       "Bash(echo \"=== exit grep $? \\(1=none found\\) ===\")",
-      "Bash(grep -n '$effect\\\\|loadHistory\\\\|loadAllItems\\\\|loadGroups\\\\|clipboard-updated\\\\|debounce\\\\|setTimeout\\\\|searchQuery' src/routes/+page.svelte)"
+      "Bash(grep -n '$effect\\\\|loadHistory\\\\|loadAllItems\\\\|loadGroups\\\\|clipboard-updated\\\\|debounce\\\\|setTimeout\\\\|searchQuery' src/routes/+page.svelte)",
+      "Bash(grep -rln 'from \"\\\\$lib/toast\"' src/routes)"
     ],
     "additionalDirectories": [
       "/Users/abhijithpsubash"

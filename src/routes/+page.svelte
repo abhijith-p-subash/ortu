@@ -11,6 +11,8 @@
   import { checkForUpdates as runUpdateCheck, getOsInstallerUrl } from "$lib/updater";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { goto } from "$app/navigation";
+  import { showToast } from "$lib/toast";
+  import Toaster from "$lib/Toaster.svelte";
   import "../app.css";
 
   // ── Core state ─────────────────────────────────────────
@@ -138,8 +140,6 @@
   let currentPlatform = $state<string>("macos");
   let macAccessibilityGranted = $state(true);
   let checkingMacAccessibility = $state(false);
-  let showCopiedToast = $state(false);
-  let copiedToastTimer: number | null = null;
   let showMoreMenu = $state(false);
   let pasteStack = $state<ClipboardItem[]>([]);
   let showStackPanel = $state(false);
@@ -162,15 +162,6 @@
   let editContent = $state("");
   let editDescription = $state("");
 
-  interface Toast { id: number; message: string; type: "success" | "error" | "info" }
-  let toasts = $state<Toast[]>([]);
-  let toastCounter = 0;
-
-  function showToast(message: string, type: Toast["type"] = "info") {
-    const id = ++toastCounter;
-    toasts = [...toasts, { id, message, type }];
-    setTimeout(() => { toasts = toasts.filter(t => t.id !== id); }, 3000);
-  }
 
   let confirmModal = $state<{ message: string; onConfirm: () => void } | null>(null);
   function confirmAction(message: string, onConfirm: () => void) {
@@ -629,10 +620,8 @@
       if (flashTimer) clearTimeout(flashTimer);
       flashingItemId = item.id;
       flashTimer = window.setTimeout(() => { flashingItemId = null; flashTimer = null; }, 380);
-      // Brief toast confirmation
-      if (copiedToastTimer) clearTimeout(copiedToastTimer);
-      showCopiedToast = true;
-      copiedToastTimer = window.setTimeout(() => { showCopiedToast = false; copiedToastTimer = null; }, 1800);
+      // Unified toast confirmation
+      showToast("Copied to clipboard", "success");
     } catch (err) { console.error("Failed to copy:", err); }
   }
 
@@ -1894,33 +1883,9 @@
 {/if}
 
 <!-- ══════════════════════════════════════════════
-     TOASTS
+     TOASTS (unified)
 ══════════════════════════════════════════════ -->
-
-{#if showCopiedToast}
-  <div class="fixed bottom-5 right-5 bg-surface border border-green-500/[0.2] rounded-xl shadow-xl shadow-black/40 px-3.5 py-2 flex items-center gap-2 z-50">
-    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="text-green-500/80"><polyline points="20 6 9 17 4 12"/></svg>
-    <span class="text-[12px] font-medium text-fg/60">Copied</span>
-  </div>
-{/if}
-
-<div class="fixed bottom-5 left-5 z-50 flex flex-col gap-1.5 pointer-events-none">
-  {#each toasts as toast (toast.id)}
-    <div class="pointer-events-auto px-3.5 py-2 rounded-xl border shadow-xl shadow-black/40 flex items-center gap-2.5
-      {toast.type === 'success' ? 'bg-surface border-green-500/[0.18]' :
-       toast.type === 'error'   ? 'bg-surface border-red-500/[0.18]'   :
-                                  'bg-surface border-overlay/[0.07]'}">
-      {#if toast.type === 'success'}
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="text-green-500/70 shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
-      {:else if toast.type === 'error'}
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-red-400/70 shrink-0"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-      {:else}
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-[#AEB291]/60 shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-      {/if}
-      <span class="text-[12px] text-fg/55">{toast.message}</span>
-    </div>
-  {/each}
-</div>
+<Toaster />
 
 <style>
   :global(body) { margin: 0; overflow: hidden; background: transparent; }

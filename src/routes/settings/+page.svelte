@@ -5,20 +5,12 @@
   import { platform } from "@tauri-apps/plugin-os";
   import { setTheme, getStoredTheme, type Theme } from "$lib/theme";
   import { SHORTCUT_ACTIONS, prettyAccelerator, acceleratorFromEvent, getKeyLabels } from "$lib/shortcuts";
+  import { showToast } from "$lib/toast";
+  import Toaster from "$lib/Toaster.svelte";
   import "../../app.css";
 
   let currentPlatform = $state<string>("macos");
   let keyLabels = $derived(getKeyLabels(currentPlatform));
-
-  // ── Toast ──────────────────────────────────────────────
-  interface Toast { id: number; message: string; type: "success" | "error" | "info" }
-  let toasts = $state<Toast[]>([]);
-  let toastCounter = 0;
-  function showToast(message: string, type: Toast["type"] = "info") {
-    const id = ++toastCounter;
-    toasts = [...toasts, { id, message, type }];
-    setTimeout(() => { toasts = toasts.filter(t => t.id !== id); }, 3000);
-  }
 
   // ── Theme ──────────────────────────────────────────────
   let currentTheme = $state<Theme>("dark");
@@ -238,14 +230,5 @@
   </div>
 </div>
 
-<!-- Toasts -->
-<div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2">
-  {#each toasts as toast (toast.id)}
-    <div class="px-3.5 py-2 rounded-lg text-[12px] font-medium shadow-lg border
-      {toast.type === 'success' ? 'bg-[#AEB291] text-black border-transparent'
-       : toast.type === 'error' ? 'bg-red-500/90 text-white border-transparent'
-       : 'bg-raised text-fg/80 border-overlay/[0.1]'}">
-      {toast.message}
-    </div>
-  {/each}
-</div>
+<!-- Toasts (unified) -->
+<Toaster />

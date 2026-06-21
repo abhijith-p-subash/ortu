@@ -39,7 +39,6 @@ rusqlite = { version = "0.37.0", features = ["bundled"] }
 arboard = "3.6.1"
 regex = "1.12.2"
 chrono = "0.4.42"
-lazy_static = "1.5.0"
 tauri-plugin-global-shortcut = "2.3.1"
 tauri-plugin-positioner = "2.3.1"
 tauri-plugin-dialog = "2"
@@ -48,9 +47,12 @@ tauri-plugin-log = "2"
 tauri-plugin-os = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-process = "2"
-tokio = { version = "1", features = ["full"] }
+# Only time::sleep is used directly; Tauri provides the async runtime. Avoid the
+# heavy "full" feature set (net/fs/process/io) to keep the binary lean.
+tokio = { version = "1", features = ["rt-multi-thread", "time", "macros", "sync"] }
 enigo = "0.2"
-sysinfo = "0.37"
+# Only System::boot_time() is used — disable default components (disk/net/process).
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 base64 = "0.22"
 urlencoding = "2.1"
 # Image clipboard support: encode/decode common formats + thumbnails, content hashing for dedup.

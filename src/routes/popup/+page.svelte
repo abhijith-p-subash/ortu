@@ -7,6 +7,8 @@
   import { applyTheme, getStoredTheme } from "$lib/theme";
   import { platform } from "@tauri-apps/plugin-os";
   import { getNamedShortcuts, prettyAccelerator } from "$lib/shortcuts";
+  import { showToast } from "$lib/toast";
+  import Toaster from "$lib/Toaster.svelte";
   import "../../app.css";
 
   let history = $state<ClipboardItem[]>([]);
@@ -51,7 +53,8 @@
     catch { stackCount = 0; }
   }
   async function addToStack(item: ClipboardItem) {
-    try { await invoke("stack_add", { id: item.id }); } catch { /* ignore */ }
+    try { await invoke("stack_add", { id: item.id }); showToast("Added to paste stack", "success"); }
+    catch (e) { showToast(String(e), "error"); }
   }
   async function clearStack() {
     try { await invoke("stack_clear"); } catch { /* ignore */ }
@@ -557,6 +560,8 @@
   </div>
 
 </div>
+
+<Toaster />
 
 <style>
   :global(html) {

@@ -113,11 +113,16 @@ impl ClipboardDB {
             }
         };
 
-        // Enable WAL mode for performance and enforce foreign keys
+        // Performance pragmas: WAL + relaxed sync, in-memory temp tables, an
+        // 8 MB page cache, 256 MB memory-mapped I/O, and bounded WAL checkpoints.
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;
-             PRAGMA foreign_keys = ON;",
+             PRAGMA foreign_keys = ON;
+             PRAGMA temp_store = MEMORY;
+             PRAGMA cache_size = -8000;
+             PRAGMA mmap_size = 268435456;
+             PRAGMA wal_autocheckpoint = 256;",
         )?;
 
         conn.execute(

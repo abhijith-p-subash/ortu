@@ -422,6 +422,24 @@ fn detect_language(text: &str) -> Option<&'static str> {
     None
 }
 
+/// Cheap macOS pasteboard generation counter. Increments on every clipboard
+/// write system-wide. Polling this integer lets us skip the expensive
+/// get_text/get_image/get_files reads (and their allocations) when nothing
+/// changed — far lighter on idle CPU/battery than re-reading every tick.
+#[cfg(target_os = "macos")]
+fn pasteboard_change_count() -> i64 {
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+    unsafe {
+        let pb: *mut Object = msg_send![class!(NSPasteboard), generalPasteboard];
+        if pb.is_null() {
+            return -1;
+        }
+        let count: i64 = msg_send![pb, changeCount];
+        count
+    }
+}
+
 pub fn start_listener(app: AppHandle) {
     thread::spawn(move || {
         let mut clipboard = match Clipboard::new() {
@@ -433,9 +451,22 @@ pub fn start_listener(app: AppHandle) {
         };
 
         let mut last_signature = String::new();
+        #[cfg(target_os = "macos")]
+        let mut last_change_count: i64 = -1;
 
         loop {
             thread::sleep(Duration::from_millis(350));
+
+            // macOS fast path: bail out immediately when the pasteboard hasn't
+            // changed, avoiding all clipboard reads while idle.
+            #[cfg(target_os = "macos")]
+            {
+                let cc = pasteboard_change_count();
+                if cc == last_change_count {
+                    continue;
+                }
+                last_change_count = cc;
+            }
 
             // 1. File selection (macOS) — handled before text so a Finder copy
             //    isn't mistaken for its text path representation.
