@@ -319,22 +319,40 @@
   function isImagePath(p: string): boolean { return IMAGE_EXT.test(p); }
 
   async function loadThumbnails(items: ClipboardItem[]) {
+    // Fetch all missing thumbnails concurrently and commit each cache once,
+    // instead of awaiting serially and re-rendering per item.
+    const imgJobs: Promise<[number, string] | null>[] = [];
+    const fileJobs: Promise<[string, string]>[] = [];
+
     for (const item of items) {
       if (item.content_type === "image" && !thumbCache[item.id]) {
-        try {
-          const url = (await invoke("get_image_thumbnail", { id: item.id })) as string;
-          thumbCache = { ...thumbCache, [item.id]: url };
-        } catch { /* thumbnail unavailable */ }
+        imgJobs.push(
+          (invoke("get_image_thumbnail", { id: item.id }) as Promise<string>)
+            .then((url): [number, string] => [item.id, url])
+            .catch(() => null),
+        );
       } else if (item.content_type === "files") {
         for (const f of parseFiles(item.raw_content)) {
           if (isImagePath(f) && !(f in fileThumbCache)) {
-            try {
-              const url = (await invoke("get_file_thumbnail", { path: f })) as string;
-              fileThumbCache = { ...fileThumbCache, [f]: url };
-            } catch { fileThumbCache = { ...fileThumbCache, [f]: "" }; } // mark attempted
+            fileJobs.push(
+              (invoke("get_file_thumbnail", { path: f }) as Promise<string>)
+                .then((url): [string, string] => [f, url])
+                .catch((): [string, string] => [f, ""]), // mark attempted
+            );
           }
         }
       }
+    }
+
+    if (imgJobs.length) {
+      const add: Record<number, string> = {};
+      for (const r of await Promise.all(imgJobs)) if (r) add[r[0]] = r[1];
+      if (Object.keys(add).length) thumbCache = { ...thumbCache, ...add };
+    }
+    if (fileJobs.length) {
+      const add: Record<string, string> = {};
+      for (const [f, url] of await Promise.all(fileJobs)) add[f] = url;
+      fileThumbCache = { ...fileThumbCache, ...add };
     }
   }
 
@@ -720,7 +738,22 @@
 
   // ── Effects ────────────────────────────────────────────
   $effect(() => { if (selectedIndex !== undefined) scrollIntoView(); });
-  $effect(() => { if (searchQuery !== undefined || selectedGroup !== undefined) loadHistory(); });
+
+  // Debounced search/group reload: typing no longer fires a SQLite query +
+  // fuzzy rerank on every keystroke. The deps below are tracked reactively.
+  $effect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    searchQuery; selectedGroup; // track
+    const t = setTimeout(loadHistory, 90);
+    return () => clearTimeout(t);
+  });
+
+  // Coalesces bursts of clipboard captures into a single reload.
+  let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+  function scheduleReload() {
+    if (reloadTimer) clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => { reloadTimer = null; loadHistory(); loadAllItems(); }, 120);
+  }
 
   onMount(() => {
     refreshAll();
@@ -739,7 +772,7 @@
           await refreshAll(); await loadStack(); await tick(); searchInput?.focus();
         });
         unlistenFocus = uF;
-        const uC = await listen("clipboard-updated", async () => { await loadHistory(); await loadAllItems(); });
+        const uC = await listen("clipboard-updated", () => scheduleReload());
         unlistenClipboard = uC;
         const uS = await listen("stack-updated", async () => { await loadStack(); });
         unlistenStack = uS;

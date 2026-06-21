@@ -7,6 +7,18 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+# Optimized release profile: smaller, faster binary with lower memory use.
+[profile.release]
+opt-level = 3       # full speed optimizations
+lto = true          # link-time optimization across crates
+codegen-units = 1   # better optimization (slower compile, faster runtime)
+panic = "abort"     # drop unwinding machinery → smaller binary
+strip = true        # strip symbols → much smaller binary
+
+# Dependencies stay optimized even in dev so the app feels snappy while developing.
+[profile.dev.package."*"]
+opt-level = 3
+
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.

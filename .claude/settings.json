@@ -44,7 +44,8 @@
       "Bash(sed -n '/pub async fn copy_item_and_paste_from_popup/,/^}/p' src-tauri/src/commands.rs)",
       "Bash(rm -f src-tauri/examples/timecheck.rs)",
       "Bash(rmdir src-tauri/examples)",
-      "Bash(echo \"=== exit grep $? \\(1=none found\\) ===\")"
+      "Bash(echo \"=== exit grep $? \\(1=none found\\) ===\")",
+      "Bash(grep -n '$effect\\\\|loadHistory\\\\|loadAllItems\\\\|loadGroups\\\\|clipboard-updated\\\\|debounce\\\\|setTimeout\\\\|searchQuery' src/routes/+page.svelte)"
     ],
     "additionalDirectories": [
       "/Users/abhijithpsubash"
