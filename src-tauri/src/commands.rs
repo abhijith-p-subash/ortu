@@ -3,6 +3,7 @@ use crate::db::{ClipboardDB, ClipboardItem, Snippet};
 use crate::PopupPasteTarget;
 use crate::PasteStack;
 use base64::Engine as _;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -261,6 +262,19 @@ pub async fn paste_item(_app: AppHandle) -> Result<(), String> {
     send_paste_shortcut()
 }
 
+/// Force-releases every modifier key. When a synthetic copy/paste is triggered
+/// by a *global hotkey*, the user is usually still physically holding that
+/// hotkey's modifiers (e.g. Alt+Shift from Alt+Shift+V). Without this, the
+/// injected Cmd/Ctrl+V would land as Cmd+Alt+Shift+V and do nothing. Releasing
+/// the keys first clears the OS modifier state so the clean combo registers.
+fn release_held_modifiers(enigo: &mut enigo::Enigo) {
+    use enigo::{Direction, Key, Keyboard};
+    let _ = enigo.key(Key::Shift, Direction::Release);
+    let _ = enigo.key(Key::Alt, Direction::Release);
+    let _ = enigo.key(Key::Control, Direction::Release);
+    let _ = enigo.key(Key::Meta, Direction::Release);
+}
+
 fn send_paste_shortcut() -> Result<(), String> {
     use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 
@@ -270,6 +284,9 @@ fn send_paste_shortcut() -> Result<(), String> {
     log::info!("Sending paste shortcut");
 
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+
+    release_held_modifiers(&mut enigo);
+    std::thread::sleep(std::time::Duration::from_millis(40));
 
     #[cfg(target_os = "macos")]
     {
@@ -284,6 +301,40 @@ fn send_paste_shortcut() -> Result<(), String> {
     {
         let _ = enigo.key(Key::Control, Direction::Press);
         let _ = enigo.key(Key::Unicode('v'), Direction::Click);
+        let _ = enigo.key(Key::Control, Direction::Release);
+    }
+
+    Ok(())
+}
+
+/// Sends the OS "copy" shortcut (Cmd+C on macOS, Ctrl+C elsewhere) to the
+/// frontmost app, so its current selection lands on the system clipboard.
+fn send_copy_shortcut() -> Result<(), String> {
+    use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+
+    #[cfg(target_os = "macos")]
+    ensure_macos_accessibility_permission()?;
+
+    log::info!("Sending copy shortcut");
+
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+
+    release_held_modifiers(&mut enigo);
+    std::thread::sleep(std::time::Duration::from_millis(40));
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = enigo.key(Key::Meta, Direction::Press);
+        // Fixed macOS virtual keycode for "C" (8) — avoids layout lookup on a
+        // worker thread, matching the paste path's use of keycode 9 for "V".
+        let _ = enigo.key(Key::Other(8), Direction::Click);
+        let _ = enigo.key(Key::Meta, Direction::Release);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = enigo.key(Key::Control, Direction::Press);
+        let _ = enigo.key(Key::Unicode('c'), Direction::Click);
         let _ = enigo.key(Key::Control, Direction::Release);
     }
 
@@ -501,6 +552,103 @@ pub fn reveal_item(app: AppHandle, id: i64) -> Result<String, String> {
     }
 }
 
+// ── Global shortcut configuration ───────────────────────────────────────────
+
+/// Current accelerator (user-set or default) for every rebindable global
+/// shortcut action, keyed by action id.
+#[tauri::command]
+pub fn get_shortcuts(app: AppHandle) -> Result<HashMap<String, String>, String> {
+    let mut out = HashMap::new();
+    for action in crate::SHORTCUT_ACTIONS {
+        out.insert(action.to_string(), crate::accelerator_for(&app, action));
+    }
+    Ok(out)
+}
+
+/// Built-in default accelerators, for the "restore defaults" UI.
+#[tauri::command]
+pub fn get_default_shortcuts() -> Result<HashMap<String, String>, String> {
+    let mut out = HashMap::new();
+    for action in crate::SHORTCUT_ACTIONS {
+        out.insert(
+            action.to_string(),
+            crate::default_accelerator(action).to_string(),
+        );
+    }
+    Ok(out)
+}
+
+/// Rebinds one action to a new accelerator, persists it, and re-registers all
+/// global shortcuts. Rejects unknown actions, unparseable accelerators, combos
+/// already used by another action, and combos the OS won't grant.
+#[tauri::command]
+pub fn set_shortcut(app: AppHandle, action: String, accelerator: String) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::Shortcut;
+
+    if !crate::SHORTCUT_ACTIONS.contains(&action.as_str()) {
+        return Err(format!("Unknown shortcut action: {action}"));
+    }
+    let acc = accelerator.trim().to_string();
+    if acc.is_empty() {
+        return Err("Shortcut cannot be empty".to_string());
+    }
+    // Must parse as a valid accelerator before we persist anything.
+    acc.parse::<Shortcut>()
+        .map_err(|e| format!("Invalid shortcut: {e}"))?;
+
+    // Disallow assigning the same combo to two different actions.
+    for other in crate::SHORTCUT_ACTIONS {
+        if other != action && crate::accelerator_for(&app, other).eq_ignore_ascii_case(&acc) {
+            return Err("That shortcut is already used by another action".to_string());
+        }
+    }
+
+    let db = app.state::<ClipboardDB>();
+    let key = format!("shortcut_{action}");
+    let previous = db.get_setting(&key).map_err(|e| e.to_string())?;
+    db.set_setting(&key, &acc).map_err(|e| e.to_string())?;
+
+    let failed = crate::register_global_shortcuts(&app);
+    if failed.contains(&action) {
+        // Roll back if the OS refused the new combo (e.g. taken by another app).
+        match previous {
+            Some(p) => {
+                let _ = db.set_setting(&key, &p);
+            }
+            None => {
+                let _ = db.set_setting(&key, crate::default_accelerator(&action));
+            }
+        }
+        let _ = crate::register_global_shortcuts(&app);
+        return Err(
+            "Could not register that shortcut — it may already be in use by another app."
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// Restores all global shortcuts to their built-in defaults and returns them.
+#[tauri::command]
+pub fn reset_shortcuts(app: AppHandle) -> Result<HashMap<String, String>, String> {
+    {
+        let db = app.state::<ClipboardDB>();
+        for action in crate::SHORTCUT_ACTIONS {
+            let _ = db.set_setting(
+                &format!("shortcut_{action}"),
+                crate::default_accelerator(action),
+            );
+        }
+    }
+    crate::register_global_shortcuts(&app);
+
+    let mut out = HashMap::new();
+    for action in crate::SHORTCUT_ACTIONS {
+        out.insert(action.to_string(), crate::accelerator_for(&app, action));
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 pub fn get_setting(app: AppHandle, key: String) -> Result<Option<String>, String> {
     let db = app.state::<ClipboardDB>();
@@ -527,6 +675,42 @@ pub fn stack_add(app: AppHandle, id: i64) -> Result<(), String> {
     }
     let _ = app.emit("stack-updated", ());
     Ok(())
+}
+
+/// Global "copy to stack": sends the OS copy shortcut to capture the current
+/// selection in the frontmost app, then enqueues the resulting clipboard text
+/// onto the paste stack. Returns false when nothing usable was copied.
+#[tauri::command]
+pub async fn copy_selection_to_stack(app: AppHandle) -> Result<bool, String> {
+    use arboard::Clipboard;
+
+    send_copy_shortcut()?;
+    // Give the foreground app time to write the selection to the clipboard.
+    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+
+    let text = {
+        let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+        clipboard.get_text().map_err(|e| e.to_string())?
+    };
+    if text.trim().is_empty() {
+        return Ok(false);
+    }
+
+    // Insert (de-duplicating) so the queued item has a stable history id. The
+    // background listener will also see this content and enrich it with groups.
+    let db = app.state::<ClipboardDB>();
+    let id = db.insert_item(text, None).map_err(|e| e.to_string())?;
+
+    {
+        let stack = app.state::<PasteStack>();
+        let mut q = stack.0.lock().map_err(|_| "lock".to_string())?;
+        if !q.contains(&id) {
+            q.push(id);
+        }
+    }
+    let _ = app.emit("stack-updated", ());
+    let _ = app.emit("clipboard-updated", ());
+    Ok(true)
 }
 
 /// Removes a specific item from the paste stack.

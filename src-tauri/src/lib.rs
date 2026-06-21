@@ -5,6 +5,7 @@ mod crypto;
 mod db;
 
 use db::ClipboardDB;
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::sync::Mutex;
@@ -14,9 +15,9 @@ use sysinfo::System;
 use tauri::Manager;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
-use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Shortcut, ShortcutState};
 
 #[cfg(target_os = "windows")]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -40,6 +41,76 @@ pub struct PopupPasteTarget(pub Mutex<Option<String>>);
 
 /// Ordered queue of history item ids for the paste stack (multi-paste).
 pub struct PasteStack(pub Mutex<Vec<i64>>);
+
+/// Maps currently-registered global shortcuts to their action id so the global
+/// handler can dispatch. Rebuilt whenever shortcuts change.
+pub struct ShortcutMap(pub Mutex<HashMap<Shortcut, String>>);
+
+/// The user-rebindable global shortcut actions.
+pub const SHORTCUT_ACTIONS: [&str; 3] = ["open_popup", "copy_stack", "paste_stack"];
+
+/// Default accelerator for an action (Tauri accelerator syntax;
+/// "CommandOrControl" → Cmd on macOS, Ctrl elsewhere).
+pub fn default_accelerator(action: &str) -> &'static str {
+    match action {
+        "open_popup" => "Alt+V",
+        "copy_stack" => "CommandOrControl+Shift+C",
+        "paste_stack" => "Alt+Shift+V",
+        _ => "",
+    }
+}
+
+/// Resolves the accelerator for an action: user setting, else default.
+pub fn accelerator_for(app: &AppHandle, action: &str) -> String {
+    app.try_state::<ClipboardDB>()
+        .and_then(|db| {
+            db.get_setting(&format!("shortcut_{action}"))
+                .ok()
+                .flatten()
+        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| default_accelerator(action).to_string())
+}
+
+/// (Re)registers all global shortcuts from current settings and rebuilds the
+/// action lookup map. Returns the list of actions that failed to register
+/// (e.g. invalid or already taken by another app).
+pub fn register_global_shortcuts(app: &AppHandle) -> Vec<String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+    let gs = app.global_shortcut();
+    let _ = gs.unregister_all();
+
+    let mut map: HashMap<Shortcut, String> = HashMap::new();
+    let mut failed: Vec<String> = Vec::new();
+
+    for action in SHORTCUT_ACTIONS {
+        let acc = accelerator_for(app, action);
+        match acc.parse::<Shortcut>() {
+            Ok(sc) => match gs.register(sc) {
+                Ok(_) => {
+                    map.insert(sc, action.to_string());
+                }
+                Err(e) => {
+                    log::error!("Failed to register {action} ({acc}): {e}");
+                    failed.push(action.to_string());
+                }
+            },
+            Err(e) => {
+                log::error!("Invalid accelerator for {action} ({acc}): {e}");
+                failed.push(action.to_string());
+            }
+        }
+    }
+
+    if let Some(state) = app.try_state::<ShortcutMap>() {
+        if let Ok(mut guard) = state.0.lock() {
+            *guard = map;
+        }
+    }
+    failed
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -74,15 +145,29 @@ pub fn run() {
                     if e.state != ShortcutState::Pressed {
                         return;
                     }
-                    if s.matches(Modifiers::ALT, Code::KeyV) {
-                        toggle_popup(app);
-                    } else if s.matches(Modifiers::ALT | Modifiers::SHIFT, Code::KeyV) {
-                        // Paste the next item from the paste stack into the
-                        // current frontmost app.
-                        let app = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let _ = commands::paste_next_from_stack(app).await;
-                        });
+                    // Look up which action this pressed shortcut maps to.
+                    let action = app
+                        .try_state::<ShortcutMap>()
+                        .and_then(|m| m.0.lock().ok().and_then(|g| g.get(s).cloned()));
+
+                    match action.as_deref() {
+                        Some("open_popup") => toggle_popup(app),
+                        Some("paste_stack") => {
+                            // Paste the next item from the paste stack into the
+                            // current frontmost app.
+                            let app = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = commands::paste_next_from_stack(app).await;
+                            });
+                        }
+                        Some("copy_stack") => {
+                            // Copy the current selection straight into the paste stack.
+                            let app = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = commands::copy_selection_to_stack(app).await;
+                            });
+                        }
+                        _ => {}
                     }
                 })
                 .build(),
@@ -91,20 +176,8 @@ pub fn run() {
     builder
         .setup(|app| {
             startup_trace("setup: entered");
-            // ---------------- SAFE GLOBAL SHORTCUT REGISTRATION ----------------
-            {
-                use tauri_plugin_global_shortcut::GlobalShortcutExt;
-                let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::KeyV);
-                if let Err(e) = app.global_shortcut().register(shortcut) {
-                    log::error!("Failed to register global shortcut: {}", e);
-                    eprintln!("Failed to register global shortcut: {}", e);
-                }
-                // Paste-stack: paste the next queued item.
-                let paste_next = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
-                if let Err(e) = app.global_shortcut().register(paste_next) {
-                    log::error!("Failed to register paste-stack shortcut: {}", e);
-                }
-            }
+            // Global shortcuts are registered after the DB + ShortcutMap state
+            // are managed (they are read from user settings). See below.
 
             // ---------------- ARGUMENT CHECK (AUTOSTART VS MANUAL) ----------------
             let args: Vec<String> = std::env::args().collect();
@@ -151,6 +224,15 @@ pub fn run() {
             app.manage(db);
             app.manage(PopupPasteTarget(Mutex::new(None)));
             app.manage(PasteStack(Mutex::new(Vec::new())));
+            app.manage(ShortcutMap(Mutex::new(HashMap::new())));
+
+            // ---------------- GLOBAL SHORTCUT REGISTRATION ----------------
+            let failed = register_global_shortcuts(app.handle());
+            if failed.is_empty() {
+                startup_trace("setup: global shortcuts registered");
+            } else {
+                startup_trace(&format!("setup: shortcuts failed to register: {:?}", failed));
+            }
 
             // ---------------- TRAY ----------------
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -259,7 +341,12 @@ pub fn run() {
             commands::reveal_item,
             commands::get_setting,
             commands::set_setting,
+            commands::get_shortcuts,
+            commands::get_default_shortcuts,
+            commands::set_shortcut,
+            commands::reset_shortcuts,
             commands::stack_add,
+            commands::copy_selection_to_stack,
             commands::stack_remove,
             commands::stack_clear,
             commands::stack_list,

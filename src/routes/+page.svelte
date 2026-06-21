@@ -7,7 +7,7 @@
   import { platform } from "@tauri-apps/plugin-os";
   import { getVersion } from "@tauri-apps/api/app";
   import { buildSearchQuery, clipPreview } from "$lib/filters";
-  import { getKeyLabels, getShortcutSections, getNamedShortcuts } from "$lib/shortcuts";
+  import { getKeyLabels, getShortcutSections, getNamedShortcuts, SHORTCUT_ACTIONS, prettyAccelerator, acceleratorFromEvent } from "$lib/shortcuts";
   import { checkForUpdates as runUpdateCheck, getOsInstallerUrl } from "$lib/updater";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { setTheme, getStoredTheme, type Theme } from "$lib/theme";
@@ -118,6 +118,30 @@
       await refreshAll();
       showToast("Retention updated", "success");
     } catch (e) { showToast("Failed: " + e, "error"); }
+  }
+
+  // ── Global shortcuts (user-rebindable) ──────────────────
+  let customShortcuts = $state<Record<string, string>>({});
+  let capturingAction = $state<string | null>(null);
+  async function loadShortcuts() {
+    try { customShortcuts = (await invoke("get_shortcuts")) as Record<string, string>; }
+    catch (e) { console.error("Failed to load shortcuts:", e); }
+  }
+  function startCapture(action: string) { capturingAction = action; }
+  async function applyCapturedShortcut(action: string, accelerator: string) {
+    capturingAction = null;
+    try {
+      await invoke("set_shortcut", { action, accelerator });
+      await loadShortcuts();
+      showToast("Shortcut updated", "success");
+    } catch (e) { showToast(String(e), "error"); }
+  }
+  async function restoreDefaultShortcuts() {
+    capturingAction = null;
+    try {
+      customShortcuts = (await invoke("reset_shortcuts")) as Record<string, string>;
+      showToast("Shortcuts restored to defaults", "success");
+    } catch (e) { showToast("Failed to restore: " + e, "error"); }
   }
 
   // ── Snippets (with smart variables) ─────────────────────
@@ -286,11 +310,33 @@
   let namedShortcuts = $derived(getNamedShortcuts(currentPlatform));
   let modKey  = $derived(keyLabels.mod);
 
+  // Live, OS-native labels for the rebindable GLOBAL shortcuts (fall back to
+  // the static defaults until the saved config has loaded).
+  let globalLabels = $derived({
+    open_popup: customShortcuts.open_popup ? prettyAccelerator(customShortcuts.open_popup, currentPlatform) : namedShortcuts.openPopup,
+    copy_stack: customShortcuts.copy_stack ? prettyAccelerator(customShortcuts.copy_stack, currentPlatform) : namedShortcuts.copyToStack,
+    paste_stack: customShortcuts.paste_stack ? prettyAccelerator(customShortcuts.paste_stack, currentPlatform) : namedShortcuts.pasteStack,
+  });
+
+  // Help list with the Global section overridden by the live bindings.
+  let helpSections = $derived.by(() => {
+    const overrides: Record<string, string> = {
+      "Open quick popup (anywhere)": globalLabels.open_popup,
+      "Copy selection to stack (any app)": globalLabels.copy_stack,
+      "Paste next item from stack": globalLabels.paste_stack,
+    };
+    return shortcutSections.map((sec) => ({
+      ...sec,
+      items: sec.items.map((it) => (overrides[it.label] ? { ...it, keys: overrides[it.label] } : it)),
+    }));
+  });
+
   onMount(async () => {
     try {
       currentTheme = getStoredTheme();
       currentPlatform = await platform();
       appVersion = await getVersion();
+      await loadShortcuts();
       await refreshMacAccessibilityStatus();
       setTimeout(checkForUpdates, 2000);
     } catch (e) { console.error(e); }
@@ -686,6 +732,17 @@
 
   // ── Keyboard ───────────────────────────────────────────
   function handleKeydown(e: KeyboardEvent) {
+    // Shortcut-capture mode (Settings → Shortcuts): swallow the keypress and
+    // turn it into an accelerator instead of running normal actions.
+    if (capturingAction && showSettingsModal) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") { capturingAction = null; return; }
+      const accel = acceleratorFromEvent(e);
+      if (accel) applyCapturedShortcut(capturingAction, accel);
+      return;
+    }
+
     // Mod(Cmd/Ctrl)+1–9: instant copy
     const num = parseInt(e.key);
     if (!isNaN(num) && num >= 1 && num <= 9 && (e.metaKey || e.ctrlKey)) {
@@ -727,6 +784,10 @@
     } else if (e.key === "c" && (e.metaKey || e.ctrlKey)) {
       const item = displayHistory[selectedIndex];
       if (item) { e.preventDefault(); categorizingItemId = item.id; isCategorizing = true; }
+    } else if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      const item = displayHistory[selectedIndex];
+      if (item) addToStack(item);
     } else if (e.key === "g" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       isViewingGroups = !isViewingGroups;
@@ -819,7 +880,7 @@
         <button
           onclick={() => { showStackPanel = !showStackPanel; if (showStackPanel) loadStack(); }}
           aria-label="Paste stack"
-          title="Paste stack ({namedShortcuts.pasteStack} to paste next)"
+          title="Paste stack ({globalLabels.paste_stack} to paste next)"
           class=" relative h-[26px] w-[26px] flex items-center justify-center rounded-md transition-all {pasteStack.length > 0 ? 'text-[#FF8A3D] hover:bg-[#FF8A3D]/[0.12]' : 'text-fg/55 hover:text-fg/90 hover:bg-overlay/[0.09]'}"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
@@ -840,7 +901,7 @@
             </div>
             {#if pasteStack.length === 0}
               <div class="px-3 py-5 text-center text-[11px] text-fg/35">
-                Stack is empty.<br />Use the stack icon on an item to queue it.
+                Stack is empty.<br />Use the stack icon on an item, or press <kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-fg/60 text-[9px] font-semibold">{globalLabels.copy_stack}</kbd> in any app to queue your selection.
               </div>
             {:else}
               <div class="max-h-64 overflow-y-auto custom-scrollbar py-1">
@@ -856,7 +917,7 @@
               </div>
             {/if}
             <div class="px-3 py-2 border-t border-overlay/[0.07] bg-overlay/[0.02]">
-              <p class="text-[10px] text-fg/40 leading-relaxed">Press <kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-fg/60 text-[9px] font-semibold">{namedShortcuts.pasteStack}</kbd> in any app to paste the next item, in order.</p>
+              <p class="text-[10px] text-fg/40 leading-relaxed"><kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-fg/60 text-[9px] font-semibold">{globalLabels.copy_stack}</kbd> queues your selection · <kbd class="px-1 py-0.5 rounded bg-overlay/[0.1] text-fg/60 text-[9px] font-semibold">{globalLabels.paste_stack}</kbd> pastes the next item, in order.</p>
             </div>
           </div>
         {/if}
@@ -900,7 +961,7 @@
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
               Snippets
             </button>
-            <button onclick={() => { showMoreMenu=false; currentTheme = getStoredTheme(); loadAutoMask(); loadRetention(); showSettingsModal=true; }} class="menu-item">
+            <button onclick={() => { showMoreMenu=false; currentTheme = getStoredTheme(); capturingAction=null; loadAutoMask(); loadRetention(); loadShortcuts(); showSettingsModal=true; }} class="menu-item">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               Settings
             </button>
@@ -1141,7 +1202,7 @@
               </p>
               <div class="mt-5 space-y-2 w-full text-left">
                 <div class="flex items-center gap-3 p-3 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05]">
-                  <kbd class="px-2 py-1 bg-black/40 rounded-lg border border-overlay/[0.08] text-[10px] text-fg/35 font-mono shrink-0">{namedShortcuts.openPopup}</kbd>
+                  <kbd class="px-2 py-1 bg-black/40 rounded-lg border border-overlay/[0.08] text-[10px] text-fg/35 font-mono shrink-0">{globalLabels.open_popup}</kbd>
                   <span class="text-[11px] text-fg/30">Open quick popup anywhere</span>
                 </div>
                 <div class="flex items-center gap-3 p-3 bg-overlay/[0.03] rounded-xl border border-overlay/[0.05]">
@@ -1353,7 +1414,7 @@
     <!-- Action trio (hover / selected) -->
     <div class="flex items-center gap-0.5 shrink-0 self-start transition-opacity {isSelected ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100'}">
       <button class="p-1.5 rounded-lg transition-all hover:bg-overlay/[0.07] text-fg/40 hover:text-[#FF8A3D]"
-        onclick={(e) => { e.stopPropagation(); addToStack(item); }} title="Add to paste stack">
+        onclick={(e) => { e.stopPropagation(); addToStack(item); }} title="Add to paste stack ({namedShortcuts.addToStack})">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
       </button>
       {#if item.content_type !== "image" && item.content_type !== "files" && !item.is_sensitive}
@@ -1594,7 +1655,7 @@
         <button onclick={() => (showHelpModal = false)} class="text-fg/25 hover:text-fg/70 transition-colors" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div class="p-5 max-h-[65vh] overflow-y-auto custom-scrollbar space-y-5">
-        {#each shortcutSections as section}
+        {#each helpSections as section}
           <div>
             <h4 class="section-label mb-2.5">{section.title}</h4>
             <div class="space-y-px">
@@ -1723,6 +1784,34 @@
           </div>
           <p class="text-[10px] text-fg/30 leading-relaxed">Pinned items and items in your groups are always kept — retention only clears ungrouped history.</p>
         </div>
+
+        <!-- Global shortcuts -->
+        <div class="flex items-center justify-between pt-1">
+          <div class="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg/20">Global Shortcuts</div>
+          <button onclick={restoreDefaultShortcuts} class="text-[10px] font-medium text-fg/40 hover:text-[#FF8A3D] transition-colors">Restore defaults</button>
+        </div>
+        <div class="bg-overlay/[0.03] rounded-xl border border-overlay/[0.05] divide-y divide-overlay/[0.05]">
+          {#each SHORTCUT_ACTIONS as action}
+            <div class="flex items-center justify-between gap-3 p-3.5">
+              <div class="min-w-0">
+                <div class="text-[13px] font-medium text-fg/70">{action.label}</div>
+                <p class="text-[11px] text-fg/35 mt-0.5 leading-relaxed">{action.description}</p>
+              </div>
+              {#if capturingAction === action.id}
+                <button onclick={() => (capturingAction = null)}
+                  class="shrink-0 h-[26px] px-3 rounded-lg border border-[#FF8A3D]/40 bg-[#FF8A3D]/[0.08] text-[11px] font-semibold text-[#FF8A3D] animate-pulse">
+                  Press keys… (Esc)
+                </button>
+              {:else}
+                <button onclick={() => startCapture(action.id)} title="Click, then press the new key combination"
+                  class="shrink-0 h-[26px] min-w-[64px] px-3 rounded-lg border border-overlay/[0.1] bg-overlay/[0.05] text-[12px] font-mono font-semibold text-fg/70 hover:border-[#FF8A3D]/40 hover:text-[#FF8A3D] transition-colors">
+                  {prettyAccelerator(customShortcuts[action.id] ?? "", currentPlatform)}
+                </button>
+              {/if}
+            </div>
+          {/each}
+        </div>
+        <p class="text-[10px] text-fg/30 leading-relaxed">Click a shortcut, then press a key combination (must include {modKey}, {keyLabels.alt}, or {keyLabels.shift}). If the OS or another app already uses it, the change is rejected.</p>
       </div>
       <div class="px-5 py-3 border-t border-overlay/[0.05] flex justify-end">
         <button onclick={() => (showSettingsModal = false)} class="btn-primary">Done</button>
