@@ -23,7 +23,20 @@ export function resolveTheme(t: Theme): "dark" | "light" {
 
 export function applyTheme(t: Theme): void {
   if (typeof document === "undefined") return;
-  document.documentElement.setAttribute("data-theme", resolveTheme(t));
+  const resolved = resolveTheme(t);
+  document.documentElement.setAttribute("data-theme", resolved);
+  // Keep the native window titlebar in sync so the title stays legible.
+  syncTitlebar(resolved === "dark");
+}
+
+function syncTitlebar(dark: boolean): void {
+  // Best-effort; only available inside the Tauri runtime. Dynamic import keeps
+  // this module usable in any non-Tauri context.
+  import("@tauri-apps/api/core")
+    .then(({ invoke }) => invoke("set_titlebar_theme", { dark }))
+    .catch(() => {
+      /* not in Tauri or command unavailable — ignore */
+    });
 }
 
 export function setTheme(t: Theme): void {

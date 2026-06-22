@@ -46,7 +46,13 @@
       "Bash(rmdir src-tauri/examples)",
       "Bash(echo \"=== exit grep $? \\(1=none found\\) ===\")",
       "Bash(grep -n '$effect\\\\|loadHistory\\\\|loadAllItems\\\\|loadGroups\\\\|clipboard-updated\\\\|debounce\\\\|setTimeout\\\\|searchQuery' src/routes/+page.svelte)",
-      "Bash(grep -rln 'from \"\\\\$lib/toast\"' src/routes)"
+      "Bash(grep -rln 'from \"\\\\$lib/toast\"' src/routes)",
+      "Bash(cargo update *)",
+      "Bash(grep -A1 '^name = \"tauri\"$' Cargo.lock)",
+      "Bash(grep -A1 '^name = \"tauri-plugin-updater\"$' Cargo.lock)",
+      "Bash(node -e \"console.log\\('api', require\\('./node_modules/@tauri-apps/api/package.json'\\).version\\); console.log\\('updater', require\\('./node_modules/@tauri-apps/plugin-updater/package.json'\\).version\\)\")",
+      "Bash(cargo info *)",
+      "Bash(cargo metadata *)"
     ],
     "additionalDirectories": [
       "/Users/abhijithpsubash"
