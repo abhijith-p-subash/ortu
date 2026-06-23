@@ -236,7 +236,19 @@
 
   $effect(() => { loadData(); });
 
+  // Tag the document with the platform so platform-specific window chrome (e.g.
+  // the Windows non-transparent popup) can be styled without white corner gaps.
+  $effect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.platform = currentPlatform;
+    }
+  });
+
   onMount(() => {
+    // Resolve the platform synchronously up front so the correct window chrome
+    // paints on the very first frame (avoids a white-corner flash on Windows).
+    try { currentPlatform = platform(); } catch { /* keep default */ }
+
     window.addEventListener("keydown", handleKeydown);
     const preventContextMenu = (e: MouseEvent) => e.preventDefault();
     window.addEventListener("contextmenu", preventContextMenu);
@@ -577,5 +589,22 @@
   }
   .popup-shell {
     border-radius: 14px !important;
+  }
+
+  /* ── Windows ──────────────────────────────────────────
+     The Windows popup window is opaque (transparent compositing is
+     unreliable there). A CSS-rounded shell over a square opaque window
+     leaves bare white triangles in the corners. Fix: fill the window
+     edge-to-edge with the solid app background and let DWM round the
+     window itself (see apply_popup_rounded_corners in lib.rs). No CSS
+     rounding ⇒ no white corner gaps. */
+  :global(html[data-platform="windows"]),
+  :global(html[data-platform="windows"] body) {
+    border-radius: 0 !important;
+    background: rgb(var(--app)) !important;
+  }
+  :global(html[data-platform="windows"]) .popup-shell {
+    border-radius: 0 !important;
+    border-color: transparent !important;
   }
 </style>
