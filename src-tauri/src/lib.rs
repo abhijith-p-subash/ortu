@@ -31,6 +31,8 @@ use cocoa::appkit::NSApp;
 #[cfg(target_os = "macos")]
 use cocoa::base::{id, nil, YES};
 #[cfg(target_os = "macos")]
+use cocoa::foundation::NSString;
+#[cfg(target_os = "macos")]
 use objc::{class, msg_send, sel, sel_impl};
 #[cfg(target_os = "macos")]
 use std::ffi::CStr;
@@ -45,6 +47,11 @@ pub struct PasteStack(pub Mutex<Vec<i64>>);
 /// Maps currently-registered global shortcuts to their action id so the global
 /// handler can dispatch. Rebuilt whenever shortcuts change.
 pub struct ShortcutMap(pub Mutex<HashMap<Shortcut, String>>);
+
+/// Tracks whether the current UI theme is dark so the native titlebar can be
+/// re-applied (e.g. when the hidden main window is shown again) without the
+/// frontend having to re-sync. Defaults to dark, matching the stored default.
+pub struct TitlebarDark(pub Mutex<bool>);
 
 /// The user-rebindable global shortcut actions.
 pub const SHORTCUT_ACTIONS: [&str; 3] = ["open_popup", "copy_stack", "paste_stack"];
@@ -225,6 +232,7 @@ pub fn run() {
             app.manage(PopupPasteTarget(Mutex::new(None)));
             app.manage(PasteStack(Mutex::new(Vec::new())));
             app.manage(ShortcutMap(Mutex::new(HashMap::new())));
+            app.manage(TitlebarDark(Mutex::new(true)));
 
             // ---------------- GLOBAL SHORTCUT REGISTRATION ----------------
             let failed = register_global_shortcuts(app.handle());
@@ -268,7 +276,7 @@ pub fn run() {
             // ---------------- MAIN WINDOW SETUP ----------------
             // Prevent the app from quitting when the main window is closed
             if let Some(window) = app.get_webview_window("main") {
-                apply_main_titlebar_color(&window);
+                apply_main_titlebar_color(&window, current_titlebar_dark(app.handle()));
                 if tray_enabled {
                     let w = window.clone();
                     window.on_window_event(move |e| {
@@ -373,7 +381,8 @@ pub fn run() {
             commands::save_snippet,
             commands::delete_snippet,
             commands::render_snippet,
-            commands::transform_content
+            commands::transform_content,
+            set_titlebar_theme
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri app");
@@ -448,7 +457,12 @@ fn current_boot_session_id() -> String {
     format!("{}", System::boot_time())
 }
 
-fn apply_main_titlebar_color(window: &tauri::WebviewWindow) {
+/// Paints the main window's native titlebar to match the active UI theme so the
+/// title text stays legible (light text on dark, dark text on light) and the bar
+/// blends with the app body (`--app` token) on both macOS and Windows.
+fn apply_main_titlebar_color(window: &tauri::WebviewWindow, dark: bool) {
+    // App body color (`--app`) and a legible title text color per theme.
+    // Dark:  bg #08090C, text #FFFFFF.   Light: bg #DEE2E9, text #11161F.
     #[cfg(target_os = "windows")]
     {
         let Ok(handle) = window.window_handle() else {
@@ -459,9 +473,12 @@ fn apply_main_titlebar_color(window: &tauri::WebviewWindow) {
             _ => return,
         };
 
-        // COLORREF format: 0x00BBGGRR (for #171A1D).
-        let caption_color: u32 = 0x001D1A17;
-        let text_color: u32 = 0x00E8E8E8;
+        // COLORREF format: 0x00BBGGRR.
+        let (caption_color, text_color): (u32, u32) = if dark {
+            (0x000C0908, 0x00FFFFFF)
+        } else {
+            (0x00E9E2DE, 0x001F1611)
+        };
 
         unsafe {
             let _ = DwmSetWindowAttribute(
@@ -485,25 +502,72 @@ fn apply_main_titlebar_color(window: &tauri::WebviewWindow) {
         let _ = window.run_on_main_thread(move || {
             if let Ok(handle) = w.ns_window() {
                 let ns_window = handle as id;
+                let (r, g, b): (f64, f64, f64) = if dark {
+                    (8.0, 9.0, 12.0)
+                } else {
+                    (222.0, 226.0, 233.0)
+                };
                 unsafe {
                     let color: id = msg_send![
                         class!(NSColor),
-                        colorWithSRGBRed: 23.0f64 / 255.0f64
-                        green: 26.0f64 / 255.0f64
-                        blue: 29.0f64 / 255.0f64
+                        colorWithSRGBRed: r / 255.0f64
+                        green: g / 255.0f64
+                        blue: b / 255.0f64
                         alpha: 1.0f64
                     ];
                     let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
                     let _: () = msg_send![ns_window, setBackgroundColor: color];
+
+                    // Flip the native window appearance so AppKit draws the title
+                    // text in the matching color (light on dark, dark on light),
+                    // regardless of the OS-level appearance setting. Without this
+                    // the title is invisible when the app theme and the system
+                    // appearance disagree (e.g. light app theme on a dark Mac).
+                    let name = if dark {
+                        "NSAppearanceNameDarkAqua"
+                    } else {
+                        "NSAppearanceNameAqua"
+                    };
+                    let ns_name: id = NSString::alloc(nil).init_str(name);
+                    let appearance: id =
+                        msg_send![class!(NSAppearance), appearanceNamed: ns_name];
+                    if appearance != nil {
+                        let _: () = msg_send![ns_window, setAppearance: appearance];
+                    }
                 }
             }
         });
     }
+
+    // Avoid unused-variable warnings on platforms without a custom titlebar.
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let _ = (window, dark);
+}
+
+/// Frontend-invoked when the UI theme changes; repaints the main window's native
+/// titlebar and remembers the choice so re-showing the window keeps it in sync.
+#[tauri::command]
+fn set_titlebar_theme(app: tauri::AppHandle, dark: bool) {
+    if let Some(state) = app.try_state::<TitlebarDark>() {
+        if let Ok(mut current) = state.0.lock() {
+            *current = dark;
+        }
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        apply_main_titlebar_color(&window, dark);
+    }
+}
+
+/// Reads the remembered titlebar theme, defaulting to dark.
+fn current_titlebar_dark(app: &tauri::AppHandle) -> bool {
+    app.try_state::<TitlebarDark>()
+        .and_then(|s| s.0.lock().ok().map(|v| *v))
+        .unwrap_or(true)
 }
 
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        apply_main_titlebar_color(&window);
+        apply_main_titlebar_color(&window, current_titlebar_dark(app));
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
