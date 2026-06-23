@@ -1,0 +1,70 @@
+name: 🐛 Bug report
+description: Report a problem with Ortu
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! Please search existing issues first.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I…, Ortu did…, but I expected…
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal, numbered steps so we can reproduce it.
+      placeholder: |
+        1. Copy …
+        2. Open the popup with …
+        3. See …
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version
+      placeholder: "e.g. macOS 14.5, Windows 11 23H2, Ubuntu 24.04"
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: Ortu version
+      description: See Settings/About or the installer file name.
+      placeholder: "e.g. 2.0.0"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: |
+        Attach screenshots or relevant logs if available. Startup/panic logs live
+        in your temp dir under `ortu/` (`startup.log`, `panic.log`).
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues and this isn't a duplicate.
+          required: true
