@@ -8,4 +8,6 @@ node_modules
 !.env.example
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-.claude
+
+# Claude Code local settings (machine-specific)
+.claude/
