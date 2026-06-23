@@ -119,7 +119,7 @@
   });
 </script>
 
-<div class="h-screen flex flex-col bg-app text-fg overflow-hidden select-none pt-6">
+<div class="h-screen flex flex-col bg-app text-fg overflow-hidden select-none {currentPlatform === 'macos' ? 'pt-6' : ''}">
   <!-- ── Header ───────────────────────────────────────── -->
   <header class="h-12 shrink-0 flex items-center gap-3 px-3 border-b border-overlay/[0.09] " data-tauri-drag-region>
     <button onclick={goBack} aria-label="Back"

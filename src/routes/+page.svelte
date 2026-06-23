@@ -26,6 +26,7 @@
   let isCategorizing = $state(false);
   let categorizingItemId = $state<number | null>(null);
   let isViewingGroups = $state(false);
+  let capturePaused = $state(false);
   let selectedGroup = $state<string | null>(null);
   let newGroupName = $state("");
   let editingGroup = $state<string | null>(null);
@@ -258,9 +259,19 @@
       appVersion = await getVersion();
       await loadShortcuts();
       await refreshMacAccessibilityStatus();
+      try { capturePaused = (await invoke("get_capture_paused")) as boolean; } catch { /* keep default */ }
       setTimeout(checkForUpdates, 2000);
     } catch (e) { console.error(e); }
   });
+
+  // Toggle clipboard capture; backend persists the choice and broadcasts the
+  // change so any other window's pill stays in sync.
+  async function toggleCapture() {
+    const next = !capturePaused;
+    capturePaused = next; // optimistic
+    try { await invoke("set_capture_paused", { paused: next }); }
+    catch (e) { capturePaused = !next; console.error(e); }
+  }
 
   // ── Helpers ────────────────────────────────────────────
 
@@ -754,6 +765,7 @@
     let unlistenFocus: () => void;
     let unlistenClipboard: () => void;
     let unlistenStack: () => void;
+    let unlistenPaused: () => void;
 
     const setup = async () => {
       try {
@@ -765,6 +777,8 @@
         unlistenClipboard = uC;
         const uS = await listen("stack-updated", async () => { await loadStack(); });
         unlistenStack = uS;
+        const uP = await listen<boolean>("capture-paused-changed", (e) => { capturePaused = e.payload; });
+        unlistenPaused = uP;
       } catch (e) { console.error(e); }
     };
     setup();
@@ -775,6 +789,7 @@
       if (unlistenFocus) unlistenFocus();
       if (unlistenClipboard) unlistenClipboard();
       if (unlistenStack) unlistenStack();
+      if (unlistenPaused) unlistenPaused();
     };
   });
 
@@ -809,11 +824,30 @@
 <div class="flex flex-col h-screen bg-app text-fg overflow-hidden selection:bg-[#FF8A3D]/20">
 
   <!-- ── Header ─────────────────────────────────────── -->
-  <header class="mt-6 h-[44px] shrink-0 px-4 flex items-center justify-between bg-app border-b border-overlay/[0.09]">
-    <div class="flex items-center gap-2">
-      <img src="/logo.png" alt="" class="w-[18px] h-[18px] shrink-0 opacity-90" />
-      <span class="text-[13px] font-semibold text-fg/88 tracking-tight">Ortu</span>
-    </div>
+  <header class="{currentPlatform === 'macos' ? 'mt-6' : ''} h-[44px] shrink-0 px-4 flex items-center justify-between bg-app border-b border-overlay/[0.09]">
+    <!-- Capture status pill: click to pause/resume clipboard monitoring -->
+    <button
+      onclick={toggleCapture}
+      aria-label={capturePaused ? "Resume clipboard capture" : "Pause clipboard capture"}
+      title={capturePaused ? "Capture paused — click to resume" : "Capturing clipboard — click to pause"}
+      class="group/cap flex items-center gap-2 h-[26px] pl-2 pr-2.5 rounded-full border transition-all
+        {capturePaused
+          ? 'border-overlay/[0.1] bg-overlay/[0.04] hover:bg-overlay/[0.07]'
+          : 'border-[#AEB291]/[0.22] bg-[#AEB291]/[0.08] hover:bg-[#AEB291]/[0.12]'}"
+    >
+      <span class="relative flex h-[7px] w-[7px] shrink-0">
+        {#if !capturePaused}
+          <span class="absolute inline-flex h-full w-full rounded-full bg-[#AEB291] opacity-60 animate-ping"></span>
+        {/if}
+        <span class="relative inline-flex h-[7px] w-[7px] rounded-full {capturePaused ? 'bg-fg/30' : 'bg-[#AEB291]'}"></span>
+      </span>
+      <span class="text-[11px] font-semibold tracking-tight {capturePaused ? 'text-fg/45' : 'text-[#AEB291]'}">
+        {capturePaused ? "Paused" : "Capturing"}
+      </span>
+      {#if sidebarCounts.all > 0}
+        <span class="text-[11px] tabular-nums text-fg/30 group-hover/cap:text-fg/45 transition-colors">· {sidebarCounts.all}</span>
+      {/if}
+    </button>
     <div class="flex items-center gap-1">
       <!-- Paste stack -->
       <div class="relative mr-1">

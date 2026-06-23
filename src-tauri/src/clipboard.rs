@@ -454,8 +454,25 @@ pub fn start_listener(app: AppHandle) {
         #[cfg(target_os = "macos")]
         let mut last_change_count: i64 = -1;
 
+        // Shared pause flag (set from the header pill). Cloned out of managed
+        // state so the loop never has to touch the app registry per-tick.
+        let paused_flag = app.try_state::<crate::CapturePaused>().map(|s| s.0.clone());
+
         loop {
             thread::sleep(Duration::from_millis(350));
+
+            // Capture paused: skip reading/storing entirely. Keep the macOS
+            // change-count baseline current so resuming doesn't replay clips
+            // copied while paused.
+            if let Some(flag) = &paused_flag {
+                if flag.load(std::sync::atomic::Ordering::Relaxed) {
+                    #[cfg(target_os = "macos")]
+                    {
+                        last_change_count = pasteboard_change_count();
+                    }
+                    continue;
+                }
+            }
 
             // macOS fast path: bail out immediately when the pasteboard hasn't
             // changed, avoiding all clipboard reads while idle.

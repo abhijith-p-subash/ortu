@@ -8,10 +8,13 @@ use db::ClipboardDB;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use sysinfo::System;
+use tauri::Emitter;
 use tauri::Manager;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -52,6 +55,10 @@ pub struct ShortcutMap(pub Mutex<HashMap<Shortcut, String>>);
 /// re-applied (e.g. when the hidden main window is shown again) without the
 /// frontend having to re-sync. Defaults to dark, matching the stored default.
 pub struct TitlebarDark(pub Mutex<bool>);
+
+/// When true, the clipboard listener skips capturing new clips. Shared with the
+/// listener thread; persisted across restarts via the `capture_paused` setting.
+pub struct CapturePaused(pub Arc<AtomicBool>);
 
 /// The user-rebindable global shortcut actions.
 pub const SHORTCUT_ACTIONS: [&str; 3] = ["open_popup", "copy_stack", "paste_stack"];
@@ -234,6 +241,17 @@ pub fn run() {
             app.manage(ShortcutMap(Mutex::new(HashMap::new())));
             app.manage(TitlebarDark(Mutex::new(true)));
 
+            // Restore the persisted capture-paused state so a user who paused
+            // capture (e.g. for privacy) stays paused after a restart.
+            let initially_paused = app
+                .state::<ClipboardDB>()
+                .get_setting("capture_paused")
+                .ok()
+                .flatten()
+                .as_deref()
+                == Some("1");
+            app.manage(CapturePaused(Arc::new(AtomicBool::new(initially_paused))));
+
             // ---------------- GLOBAL SHORTCUT REGISTRATION ----------------
             let failed = register_global_shortcuts(app.handle());
             if failed.is_empty() {
@@ -382,7 +400,9 @@ pub fn run() {
             commands::delete_snippet,
             commands::render_snippet,
             commands::transform_content,
-            set_titlebar_theme
+            set_titlebar_theme,
+            get_capture_paused,
+            set_capture_paused
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri app");
@@ -556,6 +576,27 @@ fn set_titlebar_theme(app: tauri::AppHandle, dark: bool) {
     if let Some(window) = app.get_webview_window("main") {
         apply_main_titlebar_color(&window, dark);
     }
+}
+
+/// Whether the clipboard listener is currently paused.
+#[tauri::command]
+fn get_capture_paused(app: tauri::AppHandle) -> bool {
+    app.try_state::<CapturePaused>()
+        .map(|s| s.0.load(Ordering::Relaxed))
+        .unwrap_or(false)
+}
+
+/// Pauses or resumes clipboard capture, persists the choice, and notifies all
+/// windows so the header pill stays in sync.
+#[tauri::command]
+fn set_capture_paused(app: tauri::AppHandle, paused: bool) {
+    if let Some(state) = app.try_state::<CapturePaused>() {
+        state.0.store(paused, Ordering::Relaxed);
+    }
+    if let Some(db) = app.try_state::<ClipboardDB>() {
+        let _ = db.set_setting("capture_paused", if paused { "1" } else { "0" });
+    }
+    let _ = app.emit("capture-paused-changed", paused);
 }
 
 /// Reads the remembered titlebar theme, defaulting to dark.
