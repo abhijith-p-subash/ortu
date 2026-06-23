@@ -47,6 +47,9 @@ you explicitly export it.
   clears ungrouped & unpinned items on every reboot; or pick an age/count limit.
   See [CONFIGURATION.md](CONFIGURATION.md#history-retention).
 - **Pin/group intentionally** — only pinned and grouped items are kept long-term.
+- **Pause capture** — click the status pill in the header to stop recording
+  entirely (e.g. while handling sensitive data). Nothing is captured until you
+  resume, and the paused state survives restarts.
 - **Delete** individual items at any time.
 
 ## Permissions

@@ -6,6 +6,7 @@ A living, non-binding list of where Ortu is headed. Have an idea? Open a
 ## Shipped (v2.0)
 
 - Multi-format capture (text, images, files)
+- Pause/resume capture from the header (persisted across restarts)
 - Auto-grouping classifier with confidence scoring
 - FTS5 full-text search + fuzzy re-ranking
 - Paste stack (multi-paste) with global copy-to-stack and paste-next hotkeys

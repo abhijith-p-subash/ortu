@@ -10,6 +10,7 @@ SQLite database — there are no external config files to edit by hand.
 |--------------|----------------|--------|---------|
 | Theme | _(stored client-side)_ | `system` \| `light` \| `dark` | `dark` |
 | Auto-mask detected secrets | `auto_mask_secrets` | `0` \| `1` | `0` (off) |
+| Pause capture (header pill) | `capture_paused` | `0` \| `1` | `0` (capturing) |
 | Keep history for | `retention_days` | `reboot` \| `0` \| `7` \| `30` \| `90` | `reboot` |
 | Max items | `retention_max_items` | `0` (unlimited) \| `500` \| `1000` \| `5000` | `0` |
 | Global shortcuts | `shortcut_<action>` | Tauri accelerator string | see [SHORTCUTS.md](SHORTCUTS.md) |

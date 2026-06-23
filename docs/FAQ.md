@@ -12,7 +12,8 @@ See [CONFIGURATION.md](CONFIGURATION.md#storage-locations).
 
 **Does Ortu capture passwords?**
 It captures whatever is copied. If you enable *Auto-mask detected secrets*,
-likely secrets are masked and encrypted at rest. See
+likely secrets are masked and encrypted at rest. You can also click the header
+status pill to **pause capture** entirely while handling sensitive data. See
 [PRIVACY_AND_SECURITY.md](PRIVACY_AND_SECURITY.md).
 
 ## History & retention

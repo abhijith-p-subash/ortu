@@ -9,6 +9,9 @@ A complete tour of what Ortu can do.
 - **Background listener.** A lightweight watcher records new clipboard content.
   On macOS it uses the pasteboard change counter so it stays idle (low CPU)
   until something actually changes.
+- **Pause / resume.** The header status pill shows whether capture is active
+  (pulsing dot) or paused, alongside the total clip count. Click it to toggle —
+  while paused nothing is recorded, and the state persists across restarts.
 - **De-duplication.** Re-copying the same content updates the existing entry's
   timestamp instead of creating duplicates.
 - **Large-content guard.** Extremely large payloads are skipped to keep the DB

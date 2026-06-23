@@ -31,6 +31,7 @@ It captures **text, images, and files**, auto-organizes clips into groups, masks
 ## Features
 
 - 📋 **Multi-format capture** — text, images, and file selections.
+- ⏸️ **Pause capture** — toggle clipboard monitoring on/off from the header; the choice persists across restarts.
 - 🧠 **Smart auto-grouping** — a rule-based classifier sorts clips (URLs, code, JSON, shell, secrets, and more) with confidence scores.
 - 🗂️ **Groups & pinning** — organize items into user groups; pin the ones you always need. An item can belong to multiple groups.
 - 🔎 **Fast search** — SQLite **FTS5** full-text index with a fuzzy re-ranker, plus `group:<name>` and type filters.

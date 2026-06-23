@@ -26,6 +26,8 @@ Major release focused on capability, privacy, and performance.
 - **Dedicated Settings page** (appearance, privacy, retention, shortcuts),
   replacing the old menu-driven settings modal.
 - **Themes** — light, dark, or follow system.
+- **Pause/resume capture** — a header status pill toggles clipboard monitoring
+  (with a live clip count); the paused state is persisted across restarts.
 - **Unified notification (toast) system** across all windows.
 - **Snippets with variables** and **"Copy as" transforms**.
 
@@ -38,6 +40,15 @@ Major release focused on capability, privacy, and performance.
 - Aligned Rust crate versions with their npm counterparts (`tauri` 2.11,
   `tauri-plugin-updater` 2.10).
 - Expanded documentation (`docs/`), README, and project metadata.
+
+### Fixed
+- **Titlebar legibility** — the native titlebar now follows the active theme, so
+  the window title stays readable in light mode (previously invisible on macOS
+  when the app theme and system appearance disagreed).
+- **Windows titlebar color** — the caption bar now matches the app body color
+  per theme instead of always rendering a dark bar.
+- Removed the redundant in-app logo/title; the native titlebar is now the single
+  source of branding, and the header's top spacing is platform-aware.
 
 ### Notes
 - macOS requires Accessibility permission for direct paste into other apps.
