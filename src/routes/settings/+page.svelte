@@ -37,11 +37,16 @@
   }
 
   // ── History retention ──────────────────────────────────
-  let retentionDays = $state(0);
+  // retentionMode: "reboot" (default — clear ungrouped & unpinned on every OS
+  // reboot) | "0" (forever) | "7" | "30" | "90" (clear older than N days).
+  let retentionMode = $state<string>("reboot");
   let retentionMax = $state(0);
   const RETENTION_DAYS = [
-    { value: 0, label: "Forever" }, { value: 7, label: "7 days" },
-    { value: 30, label: "30 days" }, { value: 90, label: "90 days" },
+    { value: "reboot", label: "On reboot" },
+    { value: "0", label: "Forever" },
+    { value: "7", label: "7 days" },
+    { value: "30", label: "30 days" },
+    { value: "90", label: "90 days" },
   ];
   const RETENTION_MAX = [
     { value: 0, label: "Unlimited" }, { value: 500, label: "500" },
@@ -50,15 +55,15 @@
   async function loadRetention() {
     try {
       const d = (await invoke("get_setting", { key: "retention_days" })) as string | null;
-      retentionDays = d ? parseInt(d) || 0 : 0;
+      retentionMode = d && d.trim() ? d : "reboot";
       const m = (await invoke("get_setting", { key: "retention_max_items" })) as string | null;
       retentionMax = m ? parseInt(m) || 0 : 0;
     } catch { /* defaults */ }
   }
-  async function applyRetention(days: number, max: number) {
-    retentionDays = days; retentionMax = max;
+  async function applyRetention(mode: string, max: number) {
+    retentionMode = mode; retentionMax = max;
     try {
-      await invoke("set_setting", { key: "retention_days", value: String(days) });
+      await invoke("set_setting", { key: "retention_days", value: mode });
       await invoke("set_setting", { key: "retention_max_items", value: String(max) });
       await invoke("manual_cleanup");
       showToast("Retention updated", "success");
@@ -179,7 +184,7 @@
             <div class="flex shrink-0 rounded-lg bg-overlay/[0.06] border border-overlay/[0.1] p-0.5">
               {#each RETENTION_DAYS as opt}
                 <button onclick={() => applyRetention(opt.value, retentionMax)}
-                  class="px-2 py-1 rounded-md text-[11px] font-medium transition-colors {retentionDays === opt.value ? 'bg-[#FF8A3D] text-black' : 'text-fg/60 hover:text-fg/90'}">{opt.label}</button>
+                  class="px-2 py-1 rounded-md text-[11px] font-medium transition-colors {retentionMode === opt.value ? 'bg-[#FF8A3D] text-black' : 'text-fg/60 hover:text-fg/90'}">{opt.label}</button>
               {/each}
             </div>
           </div>
@@ -187,12 +192,15 @@
             <span class="text-[12px] text-fg/60">Max items</span>
             <div class="flex shrink-0 rounded-lg bg-overlay/[0.06] border border-overlay/[0.1] p-0.5">
               {#each RETENTION_MAX as opt}
-                <button onclick={() => applyRetention(retentionDays, opt.value)}
+                <button onclick={() => applyRetention(retentionMode, opt.value)}
                   class="px-2 py-1 rounded-md text-[11px] font-medium transition-colors {retentionMax === opt.value ? 'bg-[#FF8A3D] text-black' : 'text-fg/60 hover:text-fg/90'}">{opt.label}</button>
               {/each}
             </div>
           </div>
-          <p class="text-[10px] text-fg/40 leading-relaxed">Pinned items and items in your groups are always kept — retention only clears ungrouped history.</p>
+          <p class="text-[10px] text-fg/40 leading-relaxed">
+            {#if retentionMode === "reboot"}<span class="text-fg/60">On reboot</span> clears all ungrouped &amp; unpinned items every time your computer restarts.{:else}History is kept across restarts; older ungrouped items are cleared per the limits above.{/if}
+            Pinned items and items in your groups are always kept.
+          </p>
         </div>
       </section>
 

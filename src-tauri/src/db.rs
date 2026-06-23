@@ -390,28 +390,46 @@ impl ClipboardDB {
         let previous = Self::get_meta_value(&tx, "boot_session_id")?;
         let changed = previous.as_deref() != Some(boot_session_id);
 
+        // "Keep history" mode (retention_days). Default (unset) = "reboot":
+        // clear ephemeral history on every OS reboot. Any other value
+        // ("0"/"7"/"30"/"90") keeps history across reboots.
+        let mode = Self::get_meta_value(&tx, "retention_days")?
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "reboot".to_string());
+        let wipe_on_reboot = mode == "reboot";
+
+        let mut wiped = false;
         if changed {
-            // On reboot, clear transient text history but keep: pinned items,
-            // items in a user (non-system) group, and captured images/files
-            // (intentional, harder-to-reacquire content).
-            tx.execute(
-                "DELETE FROM history
-                 WHERE is_permanent = 0
-                   AND content_type NOT IN ('image', 'files')
-                   AND NOT EXISTS (
-                     SELECT 1
-                     FROM item_groups ig
-                     JOIN groups g ON g.id = ig.group_id
-                     WHERE ig.item_id = history.id
-                       AND g.is_system = 0
-                   )",
-                [],
-            )?;
+            if wipe_on_reboot {
+                // Clear ALL ungrouped + unpinned items (every content type,
+                // including images/files). Pinned items and items in a user
+                // (non-system) group are always kept.
+                tx.execute(
+                    "DELETE FROM history
+                     WHERE is_permanent = 0
+                       AND NOT EXISTS (
+                         SELECT 1
+                         FROM item_groups ig
+                         JOIN groups g ON g.id = ig.group_id
+                         WHERE ig.item_id = history.id
+                           AND g.is_system = 0
+                       )",
+                    [],
+                )?;
+                wiped = true;
+            }
+            // Always advance the boot marker so each reboot is detected once,
+            // regardless of the current mode.
             Self::set_meta_value(&tx, "boot_session_id", boot_session_id)?;
         }
 
         tx.commit()?;
-        Ok(changed)
+
+        // Reclaim image blobs orphaned by the wipe.
+        if wiped {
+            let _ = Self::prune_orphan_blobs(&conn);
+        }
+        Ok(wiped)
     }
 
     pub fn create_group(&self, name: String) -> Result<i64> {

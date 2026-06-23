@@ -52,7 +52,14 @@
       "Bash(grep -A1 '^name = \"tauri-plugin-updater\"$' Cargo.lock)",
       "Bash(node -e \"console.log\\('api', require\\('./node_modules/@tauri-apps/api/package.json'\\).version\\); console.log\\('updater', require\\('./node_modules/@tauri-apps/plugin-updater/package.json'\\).version\\)\")",
       "Bash(cargo info *)",
-      "Bash(cargo metadata *)"
+      "Bash(cargo metadata *)",
+      "Bash(sed -n '/pub fn clear_ephemeral_on_boot_change/,/^    }$/p' src/db.rs)",
+      "Bash(sed -n '/pub fn prune_expired/,/^    }$/p' src/db.rs)",
+      "Bash(sqlite3 '/Users/abhijithpsubash/Library/Application Support/com.ortu.clipboard/ortu.db' 'SELECT COUNT\\(*\\) FROM history;')",
+      "Bash(sqlite3 '/Users/abhijithpsubash/Library/Application Support/com.ortu.clipboard/ortu.db' 'SELECT COUNT\\(*\\) FROM history WHERE is_permanent=0 AND content_type NOT IN \\('\\\\''image'\\\\'','\\\\''files'\\\\''\\) AND NOT EXISTS \\(SELECT 1 FROM item_groups ig JOIN groups g ON g.id=ig.group_id WHERE ig.item_id=history.id AND g.is_system=0\\);')",
+      "Bash(sqlite3 -header -column '/Users/abhijithpsubash/Library/Application Support/com.ortu.clipboard/ortu.db' ' *)",
+      "Bash(sqlite3 '/Users/abhijithpsubash/Library/Application Support/com.ortu.clipboard/ortu.db' 'SELECT value FROM app_meta WHERE key='\\\\''boot_session_id'\\\\'';')",
+      "Bash(sysctl -n kern.boottime)"
     ],
     "additionalDirectories": [
       "/Users/abhijithpsubash"
