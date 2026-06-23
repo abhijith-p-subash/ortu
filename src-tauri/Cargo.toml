@@ -1,9 +1,13 @@
 [package]
 name = "Ortu"
-version = "1.1.1"
-description = "A Tauri App"
-authors = ["you"]
+version = "2.0.0"
+description = "A fast, local-first, privacy-focused clipboard manager built with Tauri, Rust, and SvelteKit."
+authors = ["Abhijith P Subash"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/abhijith-p-subash/ortu"
+homepage = "https://ortu.abhijithpsubash.com"
+readme = "../README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
