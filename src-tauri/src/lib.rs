@@ -27,7 +27,10 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::HWND;
 #[cfg(target_os = "windows")]
-use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR};
+use windows::Win32::Graphics::Dwm::{
+    DwmSetWindowAttribute, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR,
+    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+};
 
 #[cfg(target_os = "macos")]
 use cocoa::appkit::NSApp;
@@ -651,6 +654,8 @@ fn ensure_popup_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
     let w = window.clone();
     #[cfg(target_os = "macos")]
     setup_mac_popup(&w);
+    #[cfg(target_os = "windows")]
+    apply_popup_rounded_corners(&window);
 
     window.on_window_event(move |e| {
         if let tauri::WindowEvent::CloseRequested { api, .. } = e {
@@ -671,6 +676,33 @@ fn toggle_popup(app: &tauri::AppHandle) {
         } else {
             show_popup(app);
         }
+    }
+}
+
+/// Round the borderless popup's corners on Windows 11 via DWM so the OS clips
+/// the window itself. Without this the square native window leaves bare corners
+/// outside the CSS-rounded content — visible as white/grey triangles. Combined
+/// with a solid (non-transparent) body background in the frontend, this gives a
+/// clean rounded popup with no corner artifacts. No-op on Windows 10 (DWM
+/// ignores the attribute), where the frontend keeps the window square instead.
+#[cfg(target_os = "windows")]
+fn apply_popup_rounded_corners(window: &tauri::WebviewWindow) {
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+    let hwnd = match handle.as_raw() {
+        RawWindowHandle::Win32(h) => HWND(h.hwnd.get() as *mut std::ffi::c_void),
+        _ => return,
+    };
+
+    let pref = DWMWCP_ROUND;
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &pref as *const _ as _,
+            std::mem::size_of_val(&pref) as u32,
+        );
     }
 }
 
