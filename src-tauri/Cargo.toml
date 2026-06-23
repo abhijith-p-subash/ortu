@@ -1,11 +1,27 @@
 [package]
 name = "Ortu"
-version = "1.1.1"
-description = "A Tauri App"
-authors = ["you"]
+version = "2.0.0"
+description = "A fast, local-first, privacy-focused clipboard manager built with Tauri, Rust, and SvelteKit."
+authors = ["Abhijith P Subash"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/abhijith-p-subash/ortu"
+homepage = "https://ortu.abhijithpsubash.com"
+readme = "../README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+# Optimized release profile: smaller, faster binary with lower memory use.
+[profile.release]
+opt-level = 3       # full speed optimizations
+lto = true          # link-time optimization across crates
+codegen-units = 1   # better optimization (slower compile, faster runtime)
+panic = "abort"     # drop unwinding machinery → smaller binary
+strip = true        # strip symbols → much smaller binary
+
+# Dependencies stay optimized even in dev so the app feels snappy while developing.
+[profile.dev.package."*"]
+opt-level = 3
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -27,7 +43,6 @@ rusqlite = { version = "0.37.0", features = ["bundled"] }
 arboard = "3.6.1"
 regex = "1.12.2"
 chrono = "0.4.42"
-lazy_static = "1.5.0"
 tauri-plugin-global-shortcut = "2.3.1"
 tauri-plugin-positioner = "2.3.1"
 tauri-plugin-dialog = "2"
@@ -35,11 +50,25 @@ tauri-plugin-autostart = "2"
 tauri-plugin-log = "2"
 tauri-plugin-os = "2"
 tauri-plugin-single-instance = "2"
-tokio = { version = "1", features = ["full"] }
+tauri-plugin-process = "2"
+# Only time::sleep is used directly; Tauri provides the async runtime. Avoid the
+# heavy "full" feature set (net/fs/process/io) to keep the binary lean.
+tokio = { version = "1", features = ["rt-multi-thread", "time", "macros", "sync"] }
 enigo = "0.2"
-sysinfo = "0.37"
+# Only System::boot_time() is used — disable default components (disk/net/process).
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 base64 = "0.22"
 urlencoding = "2.1"
+# Image clipboard support: encode/decode common formats + thumbnails, content hashing for dedup.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+sha2 = "0.10"
+# Field-level encryption for sensitive (masked) clipboard items.
+aes-gcm = "0.10"
+getrandom = "0.2"
+
+# The updater is desktop-only; keep it out of any future mobile build.
+[target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
+tauri-plugin-updater = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25"

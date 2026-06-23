@@ -1,0 +1,36 @@
+name: 💡 Feature request
+description: Suggest an idea or improvement for Ortu
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do? What's painful today?
+      placeholder: I often need to…, but currently…
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe what you'd like Ortu to do.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you've thought about.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues/discussions and this isn't a duplicate.
+          required: true
+        - label: This keeps Ortu local-first and lightweight (no cloud/telemetry by default).
+          required: false

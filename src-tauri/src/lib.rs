@@ -1,9 +1,11 @@
 #![allow(unexpected_cfgs)]
 mod clipboard;
 mod commands;
+mod crypto;
 mod db;
 
 use db::ClipboardDB;
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::sync::Mutex;
@@ -13,9 +15,9 @@ use sysinfo::System;
 use tauri::Manager;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
-use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Shortcut, ShortcutState};
 
 #[cfg(target_os = "windows")]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -37,6 +39,79 @@ use std::os::raw::c_char;
 
 pub struct PopupPasteTarget(pub Mutex<Option<String>>);
 
+/// Ordered queue of history item ids for the paste stack (multi-paste).
+pub struct PasteStack(pub Mutex<Vec<i64>>);
+
+/// Maps currently-registered global shortcuts to their action id so the global
+/// handler can dispatch. Rebuilt whenever shortcuts change.
+pub struct ShortcutMap(pub Mutex<HashMap<Shortcut, String>>);
+
+/// The user-rebindable global shortcut actions.
+pub const SHORTCUT_ACTIONS: [&str; 3] = ["open_popup", "copy_stack", "paste_stack"];
+
+/// Default accelerator for an action (Tauri accelerator syntax;
+/// "CommandOrControl" → Cmd on macOS, Ctrl elsewhere).
+pub fn default_accelerator(action: &str) -> &'static str {
+    match action {
+        "open_popup" => "Alt+V",
+        "copy_stack" => "CommandOrControl+Shift+C",
+        "paste_stack" => "Alt+Shift+V",
+        _ => "",
+    }
+}
+
+/// Resolves the accelerator for an action: user setting, else default.
+pub fn accelerator_for(app: &AppHandle, action: &str) -> String {
+    app.try_state::<ClipboardDB>()
+        .and_then(|db| {
+            db.get_setting(&format!("shortcut_{action}"))
+                .ok()
+                .flatten()
+        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| default_accelerator(action).to_string())
+}
+
+/// (Re)registers all global shortcuts from current settings and rebuilds the
+/// action lookup map. Returns the list of actions that failed to register
+/// (e.g. invalid or already taken by another app).
+pub fn register_global_shortcuts(app: &AppHandle) -> Vec<String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+    let gs = app.global_shortcut();
+    let _ = gs.unregister_all();
+
+    let mut map: HashMap<Shortcut, String> = HashMap::new();
+    let mut failed: Vec<String> = Vec::new();
+
+    for action in SHORTCUT_ACTIONS {
+        let acc = accelerator_for(app, action);
+        match acc.parse::<Shortcut>() {
+            Ok(sc) => match gs.register(sc) {
+                Ok(_) => {
+                    map.insert(sc, action.to_string());
+                }
+                Err(e) => {
+                    log::error!("Failed to register {action} ({acc}): {e}");
+                    failed.push(action.to_string());
+                }
+            },
+            Err(e) => {
+                log::error!("Invalid accelerator for {action} ({acc}): {e}");
+                failed.push(action.to_string());
+            }
+        }
+    }
+
+    if let Some(state) = app.try_state::<ShortcutMap>() {
+        if let Ok(mut guard) = state.0.lock() {
+            *guard = map;
+        }
+    }
+    failed
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     install_panic_hook();
@@ -52,6 +127,13 @@ pub fn run() {
         }));
     }
 
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
     builder = builder
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -60,8 +142,32 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, s, e| {
-                    if e.state == ShortcutState::Pressed && s.matches(Modifiers::ALT, Code::KeyV) {
-                        toggle_popup(app);
+                    if e.state != ShortcutState::Pressed {
+                        return;
+                    }
+                    // Look up which action this pressed shortcut maps to.
+                    let action = app
+                        .try_state::<ShortcutMap>()
+                        .and_then(|m| m.0.lock().ok().and_then(|g| g.get(s).cloned()));
+
+                    match action.as_deref() {
+                        Some("open_popup") => toggle_popup(app),
+                        Some("paste_stack") => {
+                            // Paste the next item from the paste stack into the
+                            // current frontmost app.
+                            let app = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = commands::paste_next_from_stack(app).await;
+                            });
+                        }
+                        Some("copy_stack") => {
+                            // Copy the current selection straight into the paste stack.
+                            let app = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = commands::copy_selection_to_stack(app).await;
+                            });
+                        }
+                        _ => {}
                     }
                 })
                 .build(),
@@ -70,15 +176,8 @@ pub fn run() {
     builder
         .setup(|app| {
             startup_trace("setup: entered");
-            // ---------------- SAFE GLOBAL SHORTCUT REGISTRATION ----------------
-            {
-                use tauri_plugin_global_shortcut::GlobalShortcutExt;
-                let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::KeyV);
-                if let Err(e) = app.global_shortcut().register(shortcut) {
-                    log::error!("Failed to register global shortcut: {}", e);
-                    eprintln!("Failed to register global shortcut: {}", e);
-                }
-            }
+            // Global shortcuts are registered after the DB + ShortcutMap state
+            // are managed (they are read from user settings). See below.
 
             // ---------------- ARGUMENT CHECK (AUTOSTART VS MANUAL) ----------------
             let args: Vec<String> = std::env::args().collect();
@@ -120,8 +219,20 @@ pub fn run() {
                     return Err(e.into());
                 }
             }
+            // Apply retention limits at startup (also runs hourly).
+            let _ = db.prune_expired();
             app.manage(db);
             app.manage(PopupPasteTarget(Mutex::new(None)));
+            app.manage(PasteStack(Mutex::new(Vec::new())));
+            app.manage(ShortcutMap(Mutex::new(HashMap::new())));
+
+            // ---------------- GLOBAL SHORTCUT REGISTRATION ----------------
+            let failed = register_global_shortcuts(app.handle());
+            if failed.is_empty() {
+                startup_trace("setup: global shortcuts registered");
+            } else {
+                startup_trace(&format!("setup: shortcuts failed to register: {:?}", failed));
+            }
 
             // ---------------- TRAY ----------------
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -169,8 +280,11 @@ pub fn run() {
                 }
             }
 
-            // ---------------- POPUP WINDOW SETUP ----------------
-            let _ = ensure_popup_window(app.handle());
+            // ---------------- POPUP WINDOW (LAZY) ----------------
+            // The popup WebView is created on first use (hotkey) instead of at
+            // startup, to cut launch time and idle memory (a second WebView is
+            // the largest idle cost). toggle_popup()/show_popup() build it on
+            // demand via ensure_popup_window().
 
             // ---------------- CLIPBOARD LISTENER ----------------
             startup_trace("setup: start clipboard listener");
@@ -224,6 +338,24 @@ pub fn run() {
             commands::import_group,
             commands::paste_item,
             commands::copy_item_to_clipboard,
+            commands::get_image_thumbnail,
+            commands::get_file_thumbnail,
+            commands::set_item_sensitive,
+            commands::reveal_item,
+            commands::get_setting,
+            commands::set_setting,
+            commands::get_shortcuts,
+            commands::get_default_shortcuts,
+            commands::set_shortcut,
+            commands::reset_shortcuts,
+            commands::stack_add,
+            commands::copy_selection_to_stack,
+            commands::stack_remove,
+            commands::stack_clear,
+            commands::stack_list,
+            commands::paste_next_from_stack,
+            commands::copy_as,
+            commands::set_clipboard_text,
             commands::copy_item_and_paste,
             commands::copy_item_and_paste_from_popup,
             commands::get_macos_accessibility_status,
@@ -521,4 +653,94 @@ fn get_frontmost_app_bundle_id_macos() -> Option<String> {
         }
         Some(CStr::from_ptr(ptr).to_string_lossy().into_owned())
     }
+}
+
+/// Reads file paths currently on the clipboard (macOS). Returns None when the
+/// clipboard holds no file selection.
+#[cfg(target_os = "macos")]
+pub(crate) fn read_clipboard_file_paths() -> Option<Vec<String>> {
+    unsafe {
+        let pool: id = msg_send![class!(NSAutoreleasePool), new];
+        let result = (|| {
+            let pb: id = msg_send![class!(NSPasteboard), generalPasteboard];
+            if pb == nil {
+                return None;
+            }
+            let cflag = std::ffi::CString::new("NSFilenamesPboardType").ok()?;
+            let ftype: id = msg_send![class!(NSString), stringWithUTF8String: cflag.as_ptr()];
+            let plist: id = msg_send![pb, propertyListForType: ftype];
+            if plist == nil {
+                return None;
+            }
+            let count: usize = msg_send![plist, count];
+            if count == 0 {
+                return None;
+            }
+            let mut paths = Vec::with_capacity(count);
+            for i in 0..count {
+                let s: id = msg_send![plist, objectAtIndex: i];
+                if s == nil {
+                    continue;
+                }
+                let ptr: *const c_char = msg_send![s, UTF8String];
+                if ptr.is_null() {
+                    continue;
+                }
+                paths.push(CStr::from_ptr(ptr).to_string_lossy().into_owned());
+            }
+            if paths.is_empty() {
+                None
+            } else {
+                Some(paths)
+            }
+        })();
+        let _: () = msg_send![pool, drain];
+        result
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn read_clipboard_file_paths() -> Option<Vec<String>> {
+    None
+}
+
+/// Writes the given file paths to the clipboard as file URLs (macOS), so a
+/// subsequent paste in Finder or other apps pastes the actual files.
+#[cfg(target_os = "macos")]
+pub(crate) fn write_clipboard_file_paths(paths: &[String]) -> bool {
+    unsafe {
+        let pool: id = msg_send![class!(NSAutoreleasePool), new];
+        let ok = (|| {
+            let pb: id = msg_send![class!(NSPasteboard), generalPasteboard];
+            if pb == nil {
+                return false;
+            }
+            let _: () = msg_send![pb, clearContents];
+            let array: id = msg_send![class!(NSMutableArray), array];
+            for p in paths {
+                let cstr = match std::ffi::CString::new(p.as_str()) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let ns_path: id = msg_send![class!(NSString), stringWithUTF8String: cstr.as_ptr()];
+                let url: id = msg_send![class!(NSURL), fileURLWithPath: ns_path];
+                if url != nil {
+                    let _: () = msg_send![array, addObject: url];
+                }
+            }
+            let count: usize = msg_send![array, count];
+            if count == 0 {
+                return false;
+            }
+            let wrote: bool = msg_send![pb, writeObjects: array];
+            wrote
+        })();
+        let _: () = msg_send![pool, drain];
+        ok
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn write_clipboard_file_paths(_paths: &[String]) -> bool {
+    false
 }
