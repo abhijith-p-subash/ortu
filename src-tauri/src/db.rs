@@ -5,6 +5,9 @@ use tauri::{AppHandle, Manager};
 
 pub struct ClipboardDB {
     conn: Mutex<Connection>,
+    /// Whether the FTS5 full-text index is available; when false, search falls
+    /// back to LIKE scans.
+    fts_enabled: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -12,10 +15,15 @@ pub struct ClipboardItem {
     pub id: i64,
     pub content_type: String,
     pub raw_content: String,
-    pub category: Option<String>, // Deprecated, kept for compat or primary display
-    pub groups: Vec<String>,      // New: Many-to-Many groups
+    pub category: Option<String>,
+    pub groups: Vec<String>,
     pub is_permanent: bool,
     pub created_at: String,
+    pub description: Option<String>,
+    pub is_manual: bool,
+    // Marked sensitive: content is encrypted at rest and masked in the UI.
+    #[serde(default)]
+    pub is_sensitive: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -64,6 +72,22 @@ fn fuzzy_score(query: &str, text: &str) -> i32 {
     score
 }
 
+/// Builds an FTS5 MATCH query from free user text. Each alphanumeric token
+/// becomes a quoted prefix term so partial words match. Returns None when there
+/// are no usable tokens (caller falls back to LIKE).
+fn build_fts_query(input: &str) -> Option<String> {
+    let tokens: Vec<String> = input
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .map(|t| format!("\"{}\"*", t.replace('"', "\"\"")))
+        .collect();
+    if tokens.is_empty() {
+        None
+    } else {
+        Some(tokens.join(" "))
+    }
+}
+
 impl ClipboardDB {
     pub fn new(app_handle: &AppHandle) -> Result<Self> {
         let conn = {
@@ -89,11 +113,16 @@ impl ClipboardDB {
             }
         };
 
-        // Enable WAL mode for performance and enforce foreign keys
+        // Performance pragmas: WAL + relaxed sync, in-memory temp tables, an
+        // 8 MB page cache, 256 MB memory-mapped I/O, and bounded WAL checkpoints.
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;
-             PRAGMA foreign_keys = ON;",
+             PRAGMA foreign_keys = ON;
+             PRAGMA temp_store = MEMORY;
+             PRAGMA cache_size = -8000;
+             PRAGMA mmap_size = 268435456;
+             PRAGMA wal_autocheckpoint = 256;",
         )?;
 
         conn.execute(
@@ -179,6 +208,25 @@ impl ClipboardDB {
             [],
         )?;
 
+        // Content-addressed binary store for clipboard images. A history row of
+        // content_type 'image' references a blob by storing its hash in
+        // raw_content; identical images are deduplicated by hash.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS blobs (
+                hash TEXT PRIMARY KEY,
+                mime TEXT NOT NULL,
+                data BLOB NOT NULL,
+                thumb BLOB,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )",
+            [],
+        )?;
+
+        // Migrate: add description, is_manual and is_sensitive columns if not present
+        let _ = conn.execute("ALTER TABLE history ADD COLUMN description TEXT", []);
+        let _ = conn.execute("ALTER TABLE history ADD COLUMN is_manual BOOLEAN DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE history ADD COLUMN is_sensitive BOOLEAN DEFAULT 0", []);
+
         // Migrate existing categories into groups table
         conn.execute(
             "INSERT OR IGNORE INTO groups (name) 
@@ -217,9 +265,66 @@ impl ClipboardDB {
             [],
         )?;
 
+        // Full-text search index (FTS5), mirroring `history` via triggers. May be
+        // absent on some SQLite builds; degrade gracefully to LIKE search.
+        let fts_enabled = Self::setup_fts(&conn).unwrap_or_else(|e| {
+            eprintln!("DB: FTS5 unavailable, falling back to LIKE search: {}", e);
+            false
+        });
+
         Ok(ClipboardDB {
             conn: Mutex::new(conn),
+            fts_enabled,
         })
+    }
+
+    /// Creates the FTS5 virtual table, sync triggers, and backfills the index
+    /// once. Returns Ok(true) when FTS5 is ready.
+    fn setup_fts(conn: &Connection) -> Result<bool> {
+        conn.execute_batch(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS history_fts USING fts5(
+                raw_content,
+                description,
+                content='history',
+                content_rowid='id'
+            );
+
+            CREATE TRIGGER IF NOT EXISTS history_fts_ai AFTER INSERT ON history BEGIN
+                INSERT INTO history_fts(rowid, raw_content, description)
+                VALUES (new.id, new.raw_content, COALESCE(new.description, ''));
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS history_fts_ad AFTER DELETE ON history BEGIN
+                INSERT INTO history_fts(history_fts, rowid, raw_content, description)
+                VALUES ('delete', old.id, old.raw_content, COALESCE(old.description, ''));
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS history_fts_au AFTER UPDATE ON history BEGIN
+                INSERT INTO history_fts(history_fts, rowid, raw_content, description)
+                VALUES ('delete', old.id, old.raw_content, COALESCE(old.description, ''));
+                INSERT INTO history_fts(rowid, raw_content, description)
+                VALUES (new.id, new.raw_content, COALESCE(new.description, ''));
+            END;",
+        )?;
+
+        // One-time backfill of existing rows (idempotent rebuild).
+        let built: Option<String> = conn
+            .query_row(
+                "SELECT value FROM app_meta WHERE key = 'fts_built'",
+                [],
+                |row| row.get(0),
+            )
+            .ok();
+        if built.as_deref() != Some("1") {
+            conn.execute_batch("INSERT INTO history_fts(history_fts) VALUES('rebuild');")?;
+            conn.execute(
+                "INSERT INTO app_meta (key, value) VALUES ('fts_built', '1')
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                [],
+            )?;
+        }
+
+        Ok(true)
     }
 
     fn open_fallback_connection() -> Result<Connection> {
@@ -285,25 +390,46 @@ impl ClipboardDB {
         let previous = Self::get_meta_value(&tx, "boot_session_id")?;
         let changed = previous.as_deref() != Some(boot_session_id);
 
+        // "Keep history" mode (retention_days). Default (unset) = "reboot":
+        // clear ephemeral history on every OS reboot. Any other value
+        // ("0"/"7"/"30"/"90") keeps history across reboots.
+        let mode = Self::get_meta_value(&tx, "retention_days")?
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "reboot".to_string());
+        let wipe_on_reboot = mode == "reboot";
+
+        let mut wiped = false;
         if changed {
-            // Keep pinned items and items explicitly assigned to at least one user group.
-            tx.execute(
-                "DELETE FROM history
-                 WHERE is_permanent = 0
-                   AND NOT EXISTS (
-                     SELECT 1
-                     FROM item_groups ig
-                     JOIN groups g ON g.id = ig.group_id
-                     WHERE ig.item_id = history.id
-                       AND g.is_system = 0
-                   )",
-                [],
-            )?;
+            if wipe_on_reboot {
+                // Clear ALL ungrouped + unpinned items (every content type,
+                // including images/files). Pinned items and items in a user
+                // (non-system) group are always kept.
+                tx.execute(
+                    "DELETE FROM history
+                     WHERE is_permanent = 0
+                       AND NOT EXISTS (
+                         SELECT 1
+                         FROM item_groups ig
+                         JOIN groups g ON g.id = ig.group_id
+                         WHERE ig.item_id = history.id
+                           AND g.is_system = 0
+                       )",
+                    [],
+                )?;
+                wiped = true;
+            }
+            // Always advance the boot marker so each reboot is detected once,
+            // regardless of the current mode.
             Self::set_meta_value(&tx, "boot_session_id", boot_session_id)?;
         }
 
         tx.commit()?;
-        Ok(changed)
+
+        // Reclaim image blobs orphaned by the wipe.
+        if wiped {
+            let _ = Self::prune_orphan_blobs(&conn);
+        }
+        Ok(wiped)
     }
 
     pub fn create_group(&self, name: String) -> Result<i64> {
@@ -344,38 +470,113 @@ impl ClipboardDB {
 
     pub fn export_group(&self, name: String, path: std::path::PathBuf) -> Result<()> {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        // Fetch items associated with this group name via item_groups
+
         let mut stmt = conn.prepare(
-            "SELECT h.raw_content 
+            "SELECT h.raw_content, h.description
              FROM history h
              JOIN item_groups ig ON h.id = ig.item_id
              JOIN groups g ON ig.group_id = g.id
              WHERE g.name = ?1
              ORDER BY h.created_at DESC",
         )?;
-        let rows = stmt.query_map(params![name], |row| row.get::<_, String>(0))?;
-        let mut content = Vec::new();
-        for r in rows {
-            content.push(r?);
+
+        let rows: Vec<(String, Option<String>)> = stmt
+            .query_map(params![name], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let total = rows.len();
+        let exported_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let divider = "═".repeat(72);
+        let thin = "─".repeat(72);
+
+        let mut out = String::new();
+        out.push('\u{FEFF}'); // UTF-8 BOM so text editors detect encoding correctly
+
+        out.push_str(&format!("{divider}\n"));
+        out.push_str(&format!("  ORTU GROUP EXPORT  —  {name}\n"));
+        out.push_str(&format!("  Exported : {exported_at}\n"));
+        out.push_str(&format!("  Items    : {total}\n"));
+        out.push_str(&format!("{divider}\n"));
+
+        for (i, (content, description)) in rows.iter().enumerate() {
+            if i > 0 {
+                out.push_str(&format!("{thin}\n"));
+            }
+
+            if let Some(desc) = description {
+                if !desc.trim().is_empty() {
+                    out.push_str(&format!("Description: {desc}\n"));
+                }
+            }
+
+            out.push('\n');
+            for line in content.lines() {
+                out.push_str(&format!("  {line}\n"));
+            }
+            out.push('\n');
         }
 
-        let output = content.join("\n---\n");
-        std::fs::write(path, output)
+        out.push_str(&format!("{divider}\n"));
+        out.push_str(&format!("  End of export  —  {name}  ({total} items)\n"));
+        out.push_str(&format!("{divider}\n"));
+
+        std::fs::write(path, out)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         Ok(())
     }
 
     pub fn export_all_txt(&self, path: std::path::PathBuf) -> Result<()> {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let mut stmt = conn.prepare("SELECT raw_content FROM history ORDER BY created_at DESC")?;
-        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-        let mut content = Vec::new();
-        for r in rows {
-            content.push(r?);
+
+        let mut stmt = conn.prepare(
+            "SELECT h.raw_content, h.description
+             FROM history h
+             ORDER BY h.created_at DESC",
+        )?;
+
+        let rows: Vec<(String, Option<String>)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let total = rows.len();
+        let exported_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let divider = "═".repeat(72);
+        let thin = "─".repeat(72);
+
+        let mut out = String::new();
+        out.push('\u{FEFF}'); // UTF-8 BOM so text editors detect encoding correctly
+
+        out.push_str(&format!("{divider}\n"));
+        out.push_str("  ORTU CLIPBOARD EXPORT\n");
+        out.push_str(&format!("  Exported : {exported_at}\n"));
+        out.push_str(&format!("  Total    : {total} item(s)\n"));
+        out.push_str(&format!("{divider}\n"));
+
+        for (i, (content, description)) in rows.iter().enumerate() {
+            if i > 0 {
+                out.push_str(&format!("{thin}\n"));
+            }
+
+            if let Some(desc) = description {
+                if !desc.trim().is_empty() {
+                    out.push_str(&format!("Description: {desc}\n"));
+                }
+            }
+
+            out.push('\n');
+            for line in content.lines() {
+                out.push_str(&format!("  {line}\n"));
+            }
+            out.push('\n');
         }
 
-        let output = content.join("\n---\n");
-        std::fs::write(path, output)
+        out.push_str(&format!("{divider}\n"));
+        out.push_str(&format!("  End of export — {total} item(s)\n"));
+        out.push_str(&format!("{divider}\n"));
+
+        std::fs::write(path, out)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         Ok(())
     }
@@ -401,7 +602,7 @@ impl ClipboardDB {
         if let Some(cat) = category.clone() {
             groups.push((cat, 1.0));
         }
-        self.insert_item_with_groups("text", content, category, groups, false)
+        self.insert_item_with_groups("text", content, category, groups, false, false)
     }
 
     pub fn insert_auto_grouped_content(
@@ -409,9 +610,10 @@ impl ClipboardDB {
         content_type: &str,
         content: String,
         groups: Vec<(String, f32)>,
+        is_sensitive: bool,
     ) -> Result<i64> {
         let primary = groups.first().map(|(name, _)| name.clone());
-        self.insert_item_with_groups(content_type, content, primary, groups, true)
+        self.insert_item_with_groups(content_type, content, primary, groups, true, is_sensitive)
     }
 
     fn insert_item_with_groups(
@@ -421,6 +623,7 @@ impl ClipboardDB {
         primary_category: Option<String>,
         groups: Vec<(String, f32)>,
         system_groups: bool,
+        is_sensitive: bool,
     ) -> Result<i64> {
         let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
@@ -438,15 +641,16 @@ impl ClipboardDB {
                 "UPDATE history
                  SET created_at = CURRENT_TIMESTAMP,
                      category = COALESCE(?1, category),
-                     content_type = ?2
-                 WHERE id = ?3",
-                params![primary_category, content_type, id],
+                     content_type = ?2,
+                     is_sensitive = ?3
+                 WHERE id = ?4",
+                params![primary_category, content_type, is_sensitive, id],
             )?;
             id
         } else {
             tx.execute(
-                "INSERT INTO history (content_type, raw_content, category) VALUES (?1, ?2, ?3)",
-                params![content_type, content, primary_category],
+                "INSERT INTO history (content_type, raw_content, category, is_manual, is_sensitive) VALUES (?1, ?2, ?3, 0, ?4)",
+                params![content_type, content, primary_category, is_sensitive],
             )?;
             tx.last_insert_rowid()
         };
@@ -491,7 +695,7 @@ impl ClipboardDB {
 
                 if group_name.eq_ignore_ascii_case("text") {
                     stmt = conn.prepare(
-                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at
+                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
                          FROM history h
                          WHERE h.content_type = 'text' AND h.raw_content LIKE ?1
                          ORDER BY h.is_permanent DESC, h.created_at DESC
@@ -500,9 +704,18 @@ impl ClipboardDB {
                     rows = stmt.query(params![search_pattern])?;
                 } else if group_name.eq_ignore_ascii_case("images") {
                     stmt = conn.prepare(
-                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at
+                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
                          FROM history h
                          WHERE h.content_type = 'image' AND h.raw_content LIKE ?1
+                         ORDER BY h.is_permanent DESC, h.created_at DESC
+                         LIMIT 100",
+                    )?;
+                    rows = stmt.query(params![search_pattern])?;
+                } else if group_name.eq_ignore_ascii_case("files") {
+                    stmt = conn.prepare(
+                        "SELECT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
+                         FROM history h
+                         WHERE h.content_type = 'files' AND h.raw_content LIKE ?1
                          ORDER BY h.is_permanent DESC, h.created_at DESC
                          LIMIT 100",
                     )?;
@@ -511,7 +724,7 @@ impl ClipboardDB {
                     || group_name.eq_ignore_ascii_case("urls")
                 {
                     stmt = conn.prepare(
-                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at
+                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
                          FROM history h
                          LEFT JOIN item_groups ig ON h.id = ig.item_id
                          LEFT JOIN groups g ON ig.group_id = g.id
@@ -527,12 +740,12 @@ impl ClipboardDB {
                     rows = stmt.query(params![search_pattern])?;
                 } else {
                     stmt = conn.prepare(
-                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at 
+                        "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
                          FROM history h
                          JOIN item_groups ig ON h.id = ig.item_id
                          JOIN groups g ON ig.group_id = g.id
-                         WHERE g.name = ?1 AND h.raw_content LIKE ?2
-                         ORDER BY h.is_permanent DESC, h.created_at DESC 
+                         WHERE g.name = ?1 AND (h.raw_content LIKE ?2 OR h.description LIKE ?2)
+                         ORDER BY h.is_permanent DESC, h.created_at DESC
                          LIMIT 100",
                     )?;
                     rows = stmt.query(params![group_name, search_pattern])?;
@@ -540,27 +753,53 @@ impl ClipboardDB {
             } else {
                 fuzzy_query = Some(s.clone());
                 let pattern = format!("%{}%", s);
-                stmt = conn.prepare(
-                    "SELECT id, content_type, raw_content, category, is_permanent, created_at 
-                     FROM history 
-                     WHERE raw_content LIKE ?1
-                        OR category LIKE ?1
-                        OR EXISTS (
-                            SELECT 1
-                            FROM item_groups ig
-                            JOIN groups g ON ig.group_id = g.id
-                            WHERE ig.item_id = history.id AND g.name LIKE ?1
-                        )
-                     ORDER BY is_permanent DESC, created_at DESC 
-                     LIMIT 500",
-                )?;
-                rows = stmt.query(params![pattern])?;
+                // Fast path: FTS5 retrieves content/description candidates; we
+                // still match category/group names for parity, then the Rust
+                // fuzzy reranker orders the candidate set.
+                match (self.fts_enabled, build_fts_query(&s)) {
+                    (true, Some(fts)) => {
+                        stmt = conn.prepare(
+                            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0), COALESCE(is_sensitive, 0)
+                             FROM history
+                             WHERE id IN (SELECT rowid FROM history_fts WHERE history_fts MATCH ?1)
+                                OR category LIKE ?2
+                                OR EXISTS (
+                                    SELECT 1
+                                    FROM item_groups ig
+                                    JOIN groups g ON ig.group_id = g.id
+                                    WHERE ig.item_id = history.id AND g.name LIKE ?2
+                                )
+                             ORDER BY is_permanent DESC, created_at DESC
+                             LIMIT 500",
+                        )?;
+                        rows = stmt.query(params![fts, pattern])?;
+                    }
+                    _ => {
+                        // Fallback: LIKE scan (FTS unavailable or no usable tokens).
+                        stmt = conn.prepare(
+                            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0), COALESCE(is_sensitive, 0)
+                             FROM history
+                             WHERE raw_content LIKE ?1
+                                OR description LIKE ?1
+                                OR category LIKE ?1
+                                OR EXISTS (
+                                    SELECT 1
+                                    FROM item_groups ig
+                                    JOIN groups g ON ig.group_id = g.id
+                                    WHERE ig.item_id = history.id AND g.name LIKE ?1
+                                )
+                             ORDER BY is_permanent DESC, created_at DESC
+                             LIMIT 500",
+                        )?;
+                        rows = stmt.query(params![pattern])?;
+                    }
+                }
             }
         } else {
             stmt = conn.prepare(
-                "SELECT id, content_type, raw_content, category, is_permanent, created_at 
-                 FROM history 
-                 ORDER BY is_permanent DESC, created_at DESC 
+                "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0), COALESCE(is_sensitive, 0)
+                 FROM history
+                 ORDER BY is_permanent DESC, created_at DESC
                  LIMIT 100",
             )?;
             rows = stmt.query([])?;
@@ -572,14 +811,25 @@ impl ClipboardDB {
         while let Some(row) = rows.next()? {
             let id: i64 = row.get(0)?;
             item_ids.push(id);
+            let is_sensitive: bool = row.get(8)?;
+            // Sensitive items are never sent to the UI in clear; the content
+            // stays encrypted at rest and is only revealed on explicit request.
+            let raw_content: String = if is_sensitive {
+                String::new()
+            } else {
+                row.get(2)?
+            };
             items.push(ClipboardItem {
                 id,
                 content_type: row.get(1)?,
-                raw_content: row.get(2)?,
+                raw_content,
                 category: row.get(3)?,
-                groups: Vec::new(), // Will populate below
+                groups: Vec::new(),
                 is_permanent: row.get(4)?,
                 created_at: row.get(5)?,
+                description: row.get(6)?,
+                is_manual: row.get(7)?,
+                is_sensitive,
             });
         }
 
@@ -722,33 +972,65 @@ impl ClipboardDB {
 
     pub fn find_similar_category(&self, content: &str) -> Result<Option<String>> {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        // Simple logic: find items that share the first 10-15 characters if it's a command
         if content.len() < 5 {
             return Ok(None);
         }
 
-        // Match on prefix of first word
         let first_word = content.split_whitespace().next().unwrap_or("");
         if first_word.is_empty() {
             return Ok(None);
         }
 
+        let pattern = format!("{}%", first_word);
+
+        // Prefer user-defined groups associated with similar items (most common wins)
         let mut stmt = conn.prepare(
-            "SELECT category FROM history 
-             WHERE category IS NOT NULL AND raw_content LIKE ?1 
+            "SELECT g.name, COUNT(*) AS cnt
+             FROM history h
+             JOIN item_groups ig ON h.id = ig.item_id
+             JOIN groups g ON ig.group_id = g.id
+             WHERE h.raw_content LIKE ?1 AND g.is_system = 0
+             GROUP BY g.name
+             ORDER BY cnt DESC
              LIMIT 1",
         )?;
-        let pattern = format!("{}%", first_word);
         let mut rows = stmt.query(params![pattern])?;
         if let Some(row) = rows.next()? {
             return Ok(Some(row.get(0)?));
         }
+
+        // Fallback: legacy category column
+        let mut stmt2 = conn.prepare(
+            "SELECT category FROM history
+             WHERE category IS NOT NULL AND raw_content LIKE ?1
+             LIMIT 1",
+        )?;
+        let mut rows2 = stmt2.query(params![pattern])?;
+        if let Some(row) = rows2.next()? {
+            return Ok(Some(row.get(0)?));
+        }
+
         Ok(None)
+    }
+
+    pub fn update_item(
+        &self,
+        id: i64,
+        content: String,
+        description: Option<String>,
+    ) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "UPDATE history SET raw_content = ?1, description = ?2 WHERE id = ?3",
+            params![content, description, id],
+        )?;
+        Ok(())
     }
 
     pub fn delete_item(&self, id: i64) -> Result<()> {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM history WHERE id = ?1", params![id])?;
+        let _ = Self::prune_orphan_blobs(&conn);
         Ok(())
     }
 
@@ -761,6 +1043,120 @@ impl ClipboardDB {
         )
     }
 
+    /// Replaces an item's stored content and sets its sensitive flag. Used when
+    /// marking (store ciphertext) or unmarking (store plaintext) an item.
+    pub fn set_raw_and_sensitive(&self, id: i64, content: &str, is_sensitive: bool) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "UPDATE history SET raw_content = ?1, is_sensitive = ?2 WHERE id = ?3",
+            params![content, is_sensitive, id],
+        )?;
+        Ok(())
+    }
+
+    /// Fetches items by id (for the paste stack), masking sensitive content and
+    /// returning them in the same order as `ids`.
+    pub fn get_items_by_ids(&self, ids: &[i64]) -> Result<Vec<ClipboardItem>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
+        let sql = format!(
+            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0), COALESCE(is_sensitive, 0)
+             FROM history WHERE id IN ({})",
+            placeholders.join(",")
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+            let is_sensitive: bool = row.get(8)?;
+            let raw_content: String = if is_sensitive { String::new() } else { row.get(2)? };
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                content_type: row.get(1)?,
+                raw_content,
+                category: row.get(3)?,
+                groups: Vec::new(),
+                is_permanent: row.get(4)?,
+                created_at: row.get(5)?,
+                description: row.get(6)?,
+                is_manual: row.get(7)?,
+                is_sensitive,
+            })
+        })?;
+        let mut by_id: HashMap<i64, ClipboardItem> = HashMap::new();
+        for r in rows {
+            let item = r?;
+            by_id.insert(item.id, item);
+        }
+        Ok(ids.iter().filter_map(|id| by_id.remove(id)).collect())
+    }
+
+    // --- App settings (key/value in app_meta) ---
+
+    pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        Ok(conn
+            .query_row(
+                "SELECT value FROM app_meta WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .ok())
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "INSERT INTO app_meta (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    // --- Image blob store ---
+
+    /// Stores image bytes (+ optional thumbnail) keyed by content hash. No-op if
+    /// the hash already exists (content-addressed dedup).
+    pub fn insert_blob(&self, hash: &str, mime: &str, data: &[u8], thumb: Option<&[u8]>) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "INSERT OR IGNORE INTO blobs (hash, mime, data, thumb) VALUES (?1, ?2, ?3, ?4)",
+            params![hash, mime, data, thumb],
+        )?;
+        Ok(())
+    }
+
+    /// Full binary payload for a blob hash.
+    pub fn get_blob(&self, hash: &str) -> Result<Vec<u8>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.query_row("SELECT data FROM blobs WHERE hash = ?1", params![hash], |row| {
+            row.get(0)
+        })
+    }
+
+    /// Thumbnail for a blob hash, falling back to the full data.
+    pub fn get_blob_thumb(&self, hash: &str) -> Result<Vec<u8>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.query_row(
+            "SELECT COALESCE(thumb, data) FROM blobs WHERE hash = ?1",
+            params![hash],
+            |row| row.get(0),
+        )
+    }
+
+    /// Removes blobs no longer referenced by any image history row.
+    fn prune_orphan_blobs(conn: &Connection) -> Result<()> {
+        conn.execute(
+            "DELETE FROM blobs WHERE hash NOT IN (
+                 SELECT raw_content FROM history WHERE content_type = 'image'
+             )",
+            [],
+        )?;
+        Ok(())
+    }
+
     pub fn toggle_permanent(&self, id: i64) -> Result<()> {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
@@ -771,8 +1167,68 @@ impl ClipboardDB {
     }
 
     pub fn prune_expired(&self) -> Result<()> {
-        // Retention policy: keep clipboard entries for the whole running session.
-        // Cleanup by age is intentionally disabled.
+        // Configurable retention (settings in app_meta). Pinned items are always
+        // kept and never count toward the max-items limit.
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let get_int = |key: &str| -> Option<i64> {
+            conn.query_row(
+                "SELECT value FROM app_meta WHERE key = ?1",
+                params![key],
+                |row| row.get::<_, String>(0),
+            )
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+        };
+
+        // Retention only ever removes "ephemeral" items: NOT pinned and NOT in
+        // any user-defined (non-system) group. Pinned and grouped items are
+        // kept forever.
+        let not_curated = "is_permanent = 0
+             AND NOT EXISTS (
+                 SELECT 1 FROM item_groups ig
+                 JOIN groups g ON g.id = ig.group_id
+                 WHERE ig.item_id = history.id AND g.is_system = 0
+             )";
+
+        // Age-based: delete ephemeral items older than N days (0 = keep forever).
+        if let Some(days) = get_int("retention_days") {
+            if days > 0 {
+                conn.execute(
+                    &format!(
+                        "DELETE FROM history
+                         WHERE {not_curated}
+                           AND created_at < datetime('now', '-{days} days')"
+                    ),
+                    [],
+                )?;
+            }
+        }
+
+        // Count-based: keep only the newest N ephemeral items (0 = unlimited).
+        if let Some(max) = get_int("retention_max_items") {
+            if max > 0 {
+                conn.execute(
+                    &format!(
+                        "DELETE FROM history
+                         WHERE {not_curated}
+                           AND id NOT IN (
+                             SELECT id FROM history h2
+                             WHERE h2.is_permanent = 0
+                               AND NOT EXISTS (
+                                 SELECT 1 FROM item_groups ig
+                                 JOIN groups g ON g.id = ig.group_id
+                                 WHERE ig.item_id = h2.id AND g.is_system = 0
+                               )
+                             ORDER BY h2.created_at DESC
+                             LIMIT ?1
+                           )"
+                    ),
+                    params![max],
+                )?;
+            }
+        }
+
+        let _ = Self::prune_orphan_blobs(&conn);
         Ok(())
     }
 
@@ -834,20 +1290,17 @@ impl ClipboardDB {
         // 1. Determine which items to fetch
         let sql = if let Some(ref groups) = selected_groups {
             if groups.is_empty() {
-                // Empty list means all? Or none? Assuming "All" if Option is None, but if Some([]), maybe nothing?
-                // Let's assume UI passes None for "All".
-                "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at 
+                "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
                   FROM history h"
             } else {
-                // Filter by groups
-                "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at 
-                  FROM history h 
-                  JOIN item_groups ig ON h.id = ig.item_id 
-                  JOIN groups g ON ig.group_id = g.id 
+                "SELECT DISTINCT h.id, h.content_type, h.raw_content, h.category, h.is_permanent, h.created_at, h.description, COALESCE(h.is_manual, 0), COALESCE(h.is_sensitive, 0)
+                  FROM history h
+                  JOIN item_groups ig ON h.id = ig.item_id
+                  JOIN groups g ON ig.group_id = g.id
                   WHERE g.name IN "
             }
         } else {
-            "SELECT id, content_type, raw_content, category, is_permanent, created_at FROM history"
+            "SELECT id, content_type, raw_content, category, is_permanent, created_at, description, COALESCE(is_manual, 0), COALESCE(is_sensitive, 0) FROM history"
         };
 
         let mut final_sql = sql.to_string();
@@ -867,6 +1320,8 @@ impl ClipboardDB {
         let params = rusqlite::params_from_iter(params_vec.iter());
 
         let history_iter = stmt.query_map(params, |row| {
+            // Backup keeps sensitive content as-is (encrypted), so a restore on
+            // the same machine (same key) round-trips it.
             Ok(ClipboardItem {
                 id: row.get(0)?,
                 content_type: row.get(1)?,
@@ -875,6 +1330,9 @@ impl ClipboardDB {
                 groups: Vec::new(),
                 is_permanent: row.get(4)?,
                 created_at: row.get(5)?,
+                description: row.get(6)?,
+                is_manual: row.get(7)?,
+                is_sensitive: row.get(8)?,
             })
         })?;
         let mut history: Vec<ClipboardItem> = history_iter.collect::<Result<_, _>>()?;
@@ -979,8 +1437,8 @@ impl ClipboardDB {
         // Restore history
         {
             let mut insert_stmt = tx.prepare(
-                "INSERT INTO history (content_type, raw_content, category, is_permanent, created_at) 
-                 VALUES (?1, ?2, ?3, ?4, ?5)"
+                "INSERT INTO history (content_type, raw_content, category, is_permanent, created_at, description, is_manual, is_sensitive)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
             )?;
 
             // For checking existence in Merge mode
@@ -1004,14 +1462,15 @@ impl ClipboardDB {
                 }
 
                 if item_id == -1 {
-                    // New item
-                    // Note: We ignore item.id from backup to let SQLite autoincrement prevent conflicts in merge
                     insert_stmt.execute(params![
                         item.content_type,
                         item.raw_content,
                         item.category,
                         item.is_permanent,
-                        item.created_at
+                        item.created_at,
+                        item.description,
+                        item.is_manual,
+                        item.is_sensitive
                     ])?;
                     item_id = tx.last_insert_rowid();
                 }
@@ -1025,6 +1484,37 @@ impl ClipboardDB {
 
         tx.commit()?;
         Ok(())
+    }
+
+    pub fn add_manual_item(
+        &self,
+        content: String,
+        description: Option<String>,
+        group_name: Option<String>,
+    ) -> Result<i64> {
+        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let tx = conn.transaction()?;
+
+        tx.execute(
+            "INSERT INTO history (content_type, raw_content, description, is_manual, is_permanent)
+             VALUES ('text', ?1, ?2, 1, 1)",
+            params![content, description],
+        )?;
+        let item_id = tx.last_insert_rowid();
+
+        if let Some(group) = group_name {
+            let trimmed = group.trim();
+            if !trimmed.is_empty() {
+                let group_id = Self::ensure_group_with_type(&tx, trimmed, false)?;
+                tx.execute(
+                    "INSERT OR IGNORE INTO item_groups (item_id, group_id) VALUES (?1, ?2)",
+                    params![item_id, group_id],
+                )?;
+            }
+        }
+
+        tx.commit()?;
+        Ok(item_id)
     }
 }
 

@@ -1,74 +1,79 @@
+<div align="center">
+
+<img src="static/logo.png" alt="Ortu" width="96" height="96" />
+
 # Ortu
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+**A fast, local-first, privacy-focused clipboard manager.**
 
-Ortu is a local-first clipboard manager built with Tauri, Rust, and SvelteKit.
-It is designed for fast recall, keyboard-driven access, and organized clipboard history.
+Built with [Tauri](https://tauri.app) (Rust) + [SvelteKit](https://kit.svelte.dev) + SQLite.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue.svg)](#supported-platforms)
+[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%20v2-24C8DB.svg)](https://tauri.app)
+[![Release](https://img.shields.io/github/v/release/abhijith-p-subash/ortu?sort=semver)](https://github.com/abhijith-p-subash/ortu/releases)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00.svg?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/abhijithpsubash)
+
+[Website](https://ortu.abhijithpsubash.com/) · [Features](#features) · [Install](#install) · [Build from source](#build-from-source) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
+
+</div>
+
+---
+
+## What is Ortu?
+
+Ortu remembers what you copy so you can paste it again later — instantly, from the keyboard, and **without sending anything to the cloud**. Everything lives in a local SQLite database on your machine.
+
+It captures **text, images, and files**, auto-organizes clips into groups, masks detected secrets, and ships a power-user **paste stack** for pasting several items in sequence across apps.
+
+> Local-first by design: no account, no telemetry, no cloud sync. Your clipboard stays on your device.
 
 ## Features
 
-- Clipboard history capture (current runtime pipeline is text-first).
-- Pin important items to keep them persistent.
-- User groups and smart auto-grouping support.
-- Search and filtering (`group:<name>` and free-text search).
-- Popup quick access (`Alt+V` on Windows/Linux, `Option+V` on macOS).
-- Snippets and text transforms.
-- Backup and restore (JSON), plus export options.
-- Local SQLite storage (no cloud dependency by default).
+- 📋 **Multi-format capture** — text, images, and file selections.
+- ⏸️ **Pause capture** — toggle clipboard monitoring on/off from the header; the choice persists across restarts.
+- 🧠 **Smart auto-grouping** — a rule-based classifier sorts clips (URLs, code, JSON, shell, secrets, and more) with confidence scores.
+- 🗂️ **Groups & pinning** — organize items into user groups; pin the ones you always need. An item can belong to multiple groups.
+- 🔎 **Fast search** — SQLite **FTS5** full-text index with a fuzzy re-ranker, plus `group:<name>` and type filters.
+- 🥞 **Paste stack** — queue multiple clips and paste them one-by-one, in order, into any app.
+- 🔐 **Sensitive-data protection** — detected secrets/keys/tokens can be masked and **encrypted at rest** (AES‑256‑GCM), revealed only on demand.
+- ✂️ **Snippets & transforms** — reusable snippets with variables, and "Copy as" transforms (JSON pretty/minify, Base64, URL encode, case, slugify…).
+- ⚡ **Quick-access popup** — summon a lightweight picker over any app with a global hotkey.
+- ⌨️ **Customizable global shortcuts** — rebind the global hotkeys in Settings, with one-click restore-to-defaults.
+- 🎨 **Themes** — light, dark, or follow system.
+- 🧹 **Flexible history retention** — clear on reboot (default), keep forever, or age/count limits. Pinned & grouped items are always kept.
+- 💾 **Backup & restore** — JSON backup/restore and plain-text export.
+- 🔄 **Auto-update** — signed updates delivered via GitHub Releases.
+- 🪶 **Lightweight & native** — no bundled browser; a single small binary per platform.
 
-## Tech Stack
+See the full breakdown in **[docs/FEATURES.md](docs/FEATURES.md)**.
 
-- Frontend: SvelteKit + Tailwind CSS
-- Backend: Rust (Tauri v2)
-- Storage: SQLite via `rusqlite`
+## Screenshots
+
+> _Add screenshots/GIFs here (main window, quick popup, settings)._
+> Place images under `docs/assets/` and reference them, e.g. `![Main window](docs/assets/main.png)`.
 
 ## Supported Platforms
 
-- macOS
-- Windows
-- Linux
+| Platform | Status | Notes |
+|----------|--------|-------|
+| macOS    | ✅ | Needs Accessibility permission for direct paste |
+| Windows  | ✅ | Requires WebView2 runtime |
+| Linux    | ✅ | X11/Wayland via WebKitGTK |
 
-## Prerequisites
+## Install
 
-- Rust toolchain: <https://www.rust-lang.org/tools/install>
-- Node.js (LTS recommended): <https://nodejs.org/>
-- Platform dependencies:
-- macOS: Xcode Command Line Tools
-- Linux: `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`
-- Windows: WebView2 Runtime and MSVC build tools
+Download the latest installer for your OS from the **[Releases page](https://github.com/abhijith-p-subash/ortu/releases/latest)**.
 
-## Quick Start
+| Platform | Artifacts |
+|----------|-----------|
+| macOS    | `.dmg`, `.app` |
+| Windows  | `.msi`, `.exe` (NSIS) |
+| Linux    | `.AppImage`, `.deb` |
 
-```bash
-git clone https://github.com/abhijithpsubash/ortu.git
-cd ortu
-npm install
-npm run tauri dev
-```
+### macOS Gatekeeper note (unsigned builds)
 
-## Build
-
-```bash
-npm run tauri build
-```
-
-Typical artifacts:
-- macOS: `.app`, `.dmg`
-- Windows: `.exe`, `.msi`
-- Linux: `.deb`, `AppImage`
-
-## Hotkeys
-
-- macOS: `Option + V`
-- Windows: `Alt + V`
-- Linux: `Alt + V`
-
-## macOS Gatekeeper Workaround (No Apple Developer Account)
-
-If macOS shows:
-`"Ortu" is damaged and can’t be opened. You should move it to the Bin.`
-
-run:
+If macOS reports the app is "damaged", clear the quarantine attribute:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Ortu.app"
@@ -76,46 +81,99 @@ codesign --force --deep --sign - "/Applications/Ortu.app"
 open "/Applications/Ortu.app"
 ```
 
-Note:
-- Without Apple notarization, Gatekeeper warnings are expected for shared binaries.
-- macOS does not allow fully automatic script execution during drag-and-drop install from DMG.
+This is expected for binaries that aren't notarized with an Apple Developer account. See [docs/PRIVACY_AND_SECURITY.md](docs/PRIVACY_AND_SECURITY.md#distribution--signing).
+
+## Keyboard shortcuts (defaults)
+
+| Action | macOS | Windows / Linux |
+|--------|-------|-----------------|
+| Open quick popup | `⌥V` | `Alt+V` |
+| Copy selection to stack (any app) | `⌘⇧C` | `Ctrl+Shift+C` |
+| Paste next item from stack | `⌥⇧V` | `Alt+Shift+V` |
+| Quick copy by position | `⌘1–9` | `Ctrl+1–9` |
+| Pin / unpin | `⌘P` | `Ctrl+P` |
+| Add to group | `⌘C` | `Ctrl+C` |
+| Add selected item to stack | `⌘S` | `Ctrl+S` |
+
+Global shortcuts are **rebindable** in Settings. Full reference: **[docs/SHORTCUTS.md](docs/SHORTCUTS.md)**.
+
+## Build from source
+
+### Prerequisites
+
+- [Rust toolchain](https://www.rust-lang.org/tools/install) (stable)
+- [Node.js](https://nodejs.org/) (LTS)
+- Platform dependencies:
+  - **macOS:** Xcode Command Line Tools
+  - **Windows:** WebView2 Runtime + MSVC build tools
+  - **Linux:** `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `patchelf`
+
+### Run in development
+
+```bash
+git clone https://github.com/abhijith-p-subash/ortu.git
+cd ortu
+npm install
+npm run tauri dev
+```
+
+### Production build
+
+```bash
+npm run tauri build
+```
+
+More detail in **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** and **[docs/BUILD_AND_RELEASE.md](docs/BUILD_AND_RELEASE.md)**.
+
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Overview](docs/README.md) | Documentation index |
+| [Features](docs/FEATURES.md) | Everything Ortu can do |
+| [Architecture](docs/ARCHITECTURE.md) | How the app is built |
+| [Configuration](docs/CONFIGURATION.md) | Settings, retention, storage |
+| [Shortcuts](docs/SHORTCUTS.md) | All keyboard shortcuts |
+| [Development](docs/DEVELOPMENT.md) | Local dev & project layout |
+| [Build & Release](docs/BUILD_AND_RELEASE.md) | Building & publishing |
+| [Privacy & Security](docs/PRIVACY_AND_SECURITY.md) | Data, encryption, signing |
+| [FAQ](docs/FAQ.md) | Common questions |
+| [Roadmap](docs/ROADMAP.md) | What's planned |
+
+## Tech stack
+
+- **Frontend:** SvelteKit (SPA) + Tailwind CSS
+- **Backend:** Rust + Tauri v2
+- **Storage:** SQLite (WAL) via `rusqlite`, with a content-addressed blob store for images
 
 ## Versioning
 
-Update app version in all required config files:
+Update the version across `package.json`, `tauri.conf.json`, and `Cargo.toml`:
 
 ```bash
-npm run version-up <new_version>
+npm run version-up <new_version>   # e.g. npm run version-up 2.0.1
 ```
 
-Example:
-
-```bash
-npm run version-up 1.0.4
-```
-
-## Project Structure
-
-- `src/`: SvelteKit frontend
-- `src-tauri/src/`: Rust backend logic
-- `src-tauri/tauri.conf.json`: Tauri app/bundle config
+Ortu follows [Semantic Versioning](https://semver.org). Notable changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing
 
-Contributions are welcome.
+Contributions are welcome! Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** and our **[Code of Conduct](CODE_OF_CONDUCT.md)** before opening a PR. Found a security issue? See **[SECURITY.md](SECURITY.md)**.
 
-1. Fork the repository
-2. Create a branch (`git checkout -b feature/your-change`)
-3. Commit changes (`git commit -m "your message"`)
-4. Push branch (`git push origin feature/your-change`)
-5. Open a Pull Request
+## Links
 
-## Security and Privacy
+- 🌐 Website: <https://ortu.abhijithpsubash.com/>
+- 📦 Releases: <https://github.com/abhijith-p-subash/ortu/releases>
+- 🐙 Source: <https://github.com/abhijith-p-subash/ortu>
 
-- Clipboard data is stored locally.
-- Review code and release process before distributing binaries.
-- For production public distribution on macOS, signing + notarization is strongly recommended.
+## Support
+
+Ortu is free and open source. If it saves you time, you can support development:
+
+<a href="https://buymeacoffee.com/abhijithpsubash" target="_blank">
+  <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-abhijithpsubash-FFDD00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" />
+</a>
 
 ## License
 
-MIT License. See [LICENSE](./LICENSE).
+[MIT](LICENSE) © Abhijith P Subash

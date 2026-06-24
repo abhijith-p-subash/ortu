@@ -1,7 +1,27 @@
 {
   "name": "ortu",
-  "version": "1.1.1",
-  "description": "",
+  "version": "2.0.0",
+  "description": "Ortu — a fast, local-first, privacy-focused clipboard manager built with Tauri, Rust, and SvelteKit.",
+  "author": "Abhijith P Subash",
+  "homepage": "https://ortu.abhijithpsubash.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abhijith-p-subash/ortu.git"
+  },
+  "bugs": {
+    "url": "https://github.com/abhijith-p-subash/ortu/issues"
+  },
+  "keywords": [
+    "clipboard",
+    "clipboard-manager",
+    "tauri",
+    "rust",
+    "svelte",
+    "sveltekit",
+    "productivity",
+    "local-first",
+    "privacy"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite dev",
@@ -17,7 +37,9 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.4.2",
     "@tauri-apps/plugin-opener": "^2",
-    "@tauri-apps/plugin-os": "^2.3.2"
+    "@tauri-apps/plugin-os": "^2.3.2",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.6",

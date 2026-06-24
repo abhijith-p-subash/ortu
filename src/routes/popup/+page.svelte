@@ -4,9 +4,13 @@
   import type { ClipboardItem } from "$lib/types";
   import { listen } from "@tauri-apps/api/event";
   import { buildSearchQuery, clipPreview } from "$lib/filters";
+  import { applyTheme, getStoredTheme } from "$lib/theme";
+  import { platform } from "@tauri-apps/plugin-os";
+  import { getNamedShortcuts, prettyAccelerator } from "$lib/shortcuts";
+  import { showToast } from "$lib/toast";
+  import Toaster from "$lib/Toaster.svelte";
   import "../../app.css";
 
-  // --- STATE ---
   let history = $state<ClipboardItem[]>([]);
   let categories = $state<string[]>([]);
   let searchQuery = $state("");
@@ -15,56 +19,91 @@
   let searchInput = $state<HTMLInputElement | null>(null);
   let shell = $state<HTMLDivElement | null>(null);
 
-  // Navigation & Group state
+  let currentPlatform = $state<string>("macos");
+  let namedShortcuts = $derived(getNamedShortcuts(currentPlatform));
+  let customShortcuts = $state<Record<string, string>>({});
+  let pasteStackLabel = $derived(
+    customShortcuts.paste_stack
+      ? prettyAccelerator(customShortcuts.paste_stack, currentPlatform)
+      : namedShortcuts.pasteStack,
+  );
+
   let currentCategory = $state<string | null>(null);
   let showGroupSelector = $state<number | null>(null);
   let newGroupName = $state("");
+  let thumbCache = $state<Record<number, string>>({}); // image id → data URL
+  let fileThumbCache = $state<Record<string, string>>({}); // file path → data URL (image files)
+  const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
+  function isImagePath(p: string): boolean { return IMAGE_EXT.test(p); }
+  function parseFiles(raw: string): string[] {
+    try { const a = JSON.parse(raw); return Array.isArray(a) ? a : []; } catch { return []; }
+  }
+  function baseName(p: string): string { return p.replace(/\/+$/, "").split("/").pop() || p; }
+  function fileExt(p: string): string {
+    const name = baseName(p);
+    const i = name.lastIndexOf(".");
+    if (i <= 0 || i === name.length - 1) return "FILE";
+    return name.slice(i + 1).toUpperCase().slice(0, 4);
+  }
+
+  // Paste stack
+  let stackCount = $state(0);
+  async function loadStackCount() {
+    try { stackCount = ((await invoke("stack_list")) as unknown[]).length; }
+    catch { stackCount = 0; }
+  }
+  async function addToStack(item: ClipboardItem) {
+    try { await invoke("stack_add", { id: item.id }); showToast("Added to paste stack", "success"); }
+    catch (e) { showToast(String(e), "error"); }
+  }
+  async function clearStack() {
+    try { await invoke("stack_clear"); } catch { /* ignore */ }
+  }
+
+  async function loadThumbnails(items: ClipboardItem[]) {
+    for (const item of items) {
+      if (item.content_type === "image" && !thumbCache[item.id]) {
+        try {
+          const url = (await invoke("get_image_thumbnail", { id: item.id })) as string;
+          thumbCache = { ...thumbCache, [item.id]: url };
+        } catch { /* thumbnail unavailable */ }
+      } else if (item.content_type === "files") {
+        for (const f of parseFiles(item.raw_content)) {
+          if (isImagePath(f) && !(f in fileThumbCache)) {
+            try {
+              const url = (await invoke("get_file_thumbnail", { path: f })) as string;
+              fileThumbCache = { ...fileThumbCache, [f]: url };
+            } catch { fileThumbCache = { ...fileThumbCache, [f]: "" }; }
+          }
+        }
+      }
+    }
+  }
   let hoverPreview = $state<{
-    itemId: number;
-    content: string;
-    x: number;
-    y: number;
-    category: string | null;
+    itemId: number; content: string; x: number; y: number; category: string | null;
   } | null>(null);
   const LONG_CONTENT_PREVIEW_THRESHOLD = 140;
 
-  // --- DERIVED ---
   let filteredCategories = $derived(
     currentCategory || !searchQuery.trim()
       ? []
-      : categories.filter((c) =>
-          c.toLowerCase().includes(searchQuery.toLowerCase())
-        )
+      : categories.filter(c => c.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  // --- CORE LOGIC ---
   async function loadData() {
     try {
-      let search = searchQuery;
-      if (currentCategory) {
-        search = buildSearchQuery(currentCategory, searchQuery);
-      } else {
-        search = buildSearchQuery(null, searchQuery);
-      }
-
-      const historyData = (await invoke("get_history", {
-        search: search || null,
-      })) as ClipboardItem[];
-
+      const search = currentCategory
+        ? buildSearchQuery(currentCategory, searchQuery)
+        : buildSearchQuery(null, searchQuery);
+      const historyData = (await invoke("get_history", { search: search || null })) as ClipboardItem[];
       const catData = (await invoke("get_categories")) as string[];
-
       history = historyData;
       categories = catData;
-
-      // Keep selection in bounds
-      const totalItems =
-        history.length + (currentCategory ? 0 : filteredCategories.length);
-      if (selectedIndex >= totalItems) {
-        selectedIndex = Math.max(0, totalItems - 1);
-      }
-    } catch (e) {
-      console.error("❌ Failed to load data:", e);
-    }
+      loadThumbnails(historyData);
+      loadStackCount();
+      const total = history.length + (currentCategory ? 0 : filteredCategories.length);
+      if (selectedIndex >= total) selectedIndex = Math.max(0, total - 1);
+    } catch (e) { console.error("Failed to load data:", e); }
   }
 
   async function copyAndPaste(item: ClipboardItem) {
@@ -72,7 +111,6 @@
       hoverPreview = null;
       await invoke("copy_item_and_paste_from_popup", { id: item.id });
     } catch (err) {
-      console.error("Failed to copy and paste:", err);
       const message = err instanceof Error ? err.message : String(err);
       window.alert(message);
     }
@@ -81,7 +119,7 @@
   async function addToGroup(itemId: number, groupName: string) {
     await invoke("add_to_group", { itemId, groupName });
     showGroupSelector = null;
-    loadData(); // Manual refresh after DB change
+    loadData();
   }
 
   async function createAndAddToGroup(itemId: number) {
@@ -90,6 +128,7 @@
     await addToGroup(itemId, newGroupName.trim());
     newGroupName = "";
   }
+
   async function togglePermanent(item: ClipboardItem) {
     if (!item) return;
     await invoke("toggle_permanent", { id: item.id });
@@ -102,35 +141,35 @@
     await loadData();
   }
 
-  // --- INTERACTION ---
   function handleKeydown(e: KeyboardEvent) {
+    // Mod(Cmd/Ctrl)+1–9: instant copy by position
+    const num = parseInt(e.key);
+    if (!isNaN(num) && num >= 1 && num <= 9 && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      const item = history[num - 1];
+      if (item) { selectedIndex = (currentCategory ? 0 : filteredCategories.length) + (num - 1); copyAndPaste(item); }
+      return;
+    }
+
     if (e.key === "Escape") {
-      if (showGroupSelector !== null) {
-        showGroupSelector = null;
-      } else if (currentCategory) {
-        currentCategory = null; // $effect will trigger loadData
-      } else {
-        hoverPreview = null;
-        invoke("close_window", { label: "popup" });
-      }
+      if (showGroupSelector !== null) { showGroupSelector = null; }
+      else if (currentCategory) { currentCategory = null; }
+      else { hoverPreview = null; invoke("close_window", { label: "popup" }); }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      const total =
-        history.length + (currentCategory ? 0 : filteredCategories.length);
+      const total = history.length + (currentCategory ? 0 : filteredCategories.length);
       selectedIndex = (selectedIndex + 1) % (total || 1);
       scrollIntoView();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      const total =
-        history.length + (currentCategory ? 0 : filteredCategories.length);
+      const total = history.length + (currentCategory ? 0 : filteredCategories.length);
       selectedIndex = (selectedIndex - 1 + (total || 1)) % (total || 1);
       scrollIntoView();
     } else if (e.key === "Enter") {
       const catsCount = currentCategory ? 0 : filteredCategories.length;
       if (selectedIndex < catsCount) {
         currentCategory = filteredCategories[selectedIndex];
-        searchQuery = "";
-        selectedIndex = 0;
+        searchQuery = ""; selectedIndex = 0;
       } else {
         const item = history[selectedIndex - catsCount];
         if (item) copyAndPaste(item);
@@ -140,32 +179,29 @@
     } else if (e.key === "Delete" || (e.metaKey && e.key === "Backspace")) {
       const catsCount = currentCategory ? 0 : filteredCategories.length;
       const item = history[selectedIndex - catsCount];
-      if (item) {
-        deleteItem(item);
-      }
+      if (item) deleteItem(item);
     } else if (e.key === "p" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       const catsCount = currentCategory ? 0 : filteredCategories.length;
       const item = history[selectedIndex - catsCount];
-      if (item) {
-        togglePermanent(item);
-      }
+      if (item) togglePermanent(item);
+    } else if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      const catsCount = currentCategory ? 0 : filteredCategories.length;
+      const item = history[selectedIndex - catsCount];
+      if (item) addToStack(item);
     }
   }
 
   function scrollIntoView() {
     tick().then(() => {
-      const selectedElement = container?.querySelector(
-        `[data-index="${selectedIndex}"]`
-      );
-      selectedElement?.scrollIntoView({ block: "nearest" });
+      container?.querySelector(`[data-index="${selectedIndex}"]`)?.scrollIntoView({ block: "nearest" });
     });
   }
 
   function fullPreviewContent(item: ClipboardItem): string {
     const raw = item.raw_content?.trim();
-    if (raw) return raw;
-    return clipPreview(item.raw_content, item.content_type);
+    return raw ? raw : clipPreview(item.raw_content, item.content_type);
   }
 
   function shouldShowHoverPreview(item: ClipboardItem): boolean {
@@ -175,35 +211,17 @@
   function updateHoverPreviewPosition(e: MouseEvent, item: ClipboardItem) {
     if (!shell) return;
     const rect = shell.getBoundingClientRect();
-    const panelWidth = 300;
-    const panelHeight = 220;
-    const margin = 10;
-
+    const panelWidth = 300; const panelHeight = 220; const margin = 10;
     let x = e.clientX - rect.left + 14;
-    if (x + panelWidth + margin > rect.width) {
-      x = Math.max(margin, e.clientX - rect.left - panelWidth - 14);
-    }
-
+    if (x + panelWidth + margin > rect.width) x = Math.max(margin, e.clientX - rect.left - panelWidth - 14);
     let y = e.clientY - rect.top - 14;
-    if (y + panelHeight + margin > rect.height) {
-      y = rect.height - panelHeight - margin;
-    }
+    if (y + panelHeight + margin > rect.height) y = rect.height - panelHeight - margin;
     y = Math.max(margin, y);
-
-    hoverPreview = {
-      itemId: item.id,
-      content: fullPreviewContent(item),
-      x,
-      y,
-      category: item.category ?? null,
-    };
+    hoverPreview = { itemId: item.id, content: fullPreviewContent(item), x, y, category: item.category ?? null };
   }
 
   function handleItemHoverStart(e: MouseEvent, item: ClipboardItem) {
-    if (showGroupSelector !== null || !shouldShowHoverPreview(item)) {
-      hoverPreview = null;
-      return;
-    }
+    if (showGroupSelector !== null || !shouldShowHoverPreview(item)) { hoverPreview = null; return; }
     updateHoverPreviewPosition(e, item);
   }
 
@@ -213,417 +231,380 @@
   }
 
   function handleItemHoverEnd(item: ClipboardItem) {
-    if (hoverPreview?.itemId === item.id) {
-      hoverPreview = null;
-    }
+    if (hoverPreview?.itemId === item.id) hoverPreview = null;
   }
 
-  // --- EFFECTS & LIFECYCLE ---
-  // This automatically handles searching and category switching
+  $effect(() => { loadData(); });
+
+  // Tag the document with the platform so platform-specific window chrome (e.g.
+  // the Windows non-transparent popup) can be styled without white corner gaps.
   $effect(() => {
-    loadData();
-    // Dependencies: searchQuery, currentCategory
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.platform = currentPlatform;
+    }
   });
 
   onMount(() => {
+    // Resolve the platform synchronously up front so the correct window chrome
+    // paints on the very first frame (avoids a white-corner flash on Windows).
+    try { currentPlatform = platform(); } catch { /* keep default */ }
+
     window.addEventListener("keydown", handleKeydown);
     const preventContextMenu = (e: MouseEvent) => e.preventDefault();
     window.addEventListener("contextmenu", preventContextMenu);
 
-    // This is the important part
     const setupListeners = async () => {
       try {
-        // 1. Handle window focus (auto-reset)
+        try { currentPlatform = await platform(); } catch { /* keep default */ }
+        try { customShortcuts = (await invoke("get_shortcuts")) as Record<string, string>; } catch { /* defaults */ }
         const unFocus = await listen("tauri://focus", () => {
-          currentCategory = null;
-          searchQuery = "";
-          selectedIndex = 0;
-          hoverPreview = null;
-          loadData(); // Force reload when window pops up
+          applyTheme(getStoredTheme()); // pick up theme changes made in the main window
+          currentCategory = null; searchQuery = ""; selectedIndex = 0; hoverPreview = null;
+          loadData();
           tick().then(() => {
             searchInput?.focus();
             container?.scrollTo({ top: 0, behavior: "instant" });
           });
         });
-
-        // 2. Handle real-time updates while window is ALREADY open
-        const unClipboard = await listen("clipboard-updated", async () => {
-          console.log("Clipboard event received!"); // Check your console!
-          await loadData(); // Manually trigger the fetch
-        });
-
-        return () => {
-          unFocus();
-          unClipboard();
-        };
-      } catch (err) {
-        console.error("Failed to setup listeners:", err);
-        return () => {};
-      }
+        const unClipboard = await listen("clipboard-updated", async () => { await loadData(); });
+        const unStack = await listen("stack-updated", async () => { await loadStackCount(); });
+        return () => { unFocus(); unClipboard(); unStack(); };
+      } catch (err) { console.error("Failed to setup listeners:", err); return () => {}; }
     };
 
     const cleanup = setupListeners();
-
     return () => {
       window.removeEventListener("keydown", handleKeydown);
       window.removeEventListener("contextmenu", preventContextMenu);
-      cleanup.then((c) => c());
+      cleanup.then(c => c());
     };
   });
 
-  function getCategoryIcon(category: string | null): string {
-    if (!category)
-      return '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline>'; // FileText
-
+  function getTypeIcon(category: string | null): string {
+    if (!category) return '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>';
     const c = category.toLowerCase();
-
-    if (c === "url")
-      return '<circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>'; // Globe
-
-    if (
-      c.includes("docker") ||
-      c.includes("shell") ||
-      c.includes("kubernetes") ||
-      c.includes("cloud") ||
-      c.includes("terminal")
-    )
-      return '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>'; // Terminal
-
-    if (c.includes("git") || c.includes("version"))
-      return '<line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>'; // Git Branch
-
-    if (c.includes("database") || c.includes("sql"))
-      return '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>'; // Database
-
-    if (
-      c.includes("code") ||
-      c.includes("runtime") ||
-      c.includes("package") ||
-      c.includes("ci")
-    )
-      return '<polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>'; // Code
-
-    return '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line>'; // Tag
+    if (c === "url") return '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>';
+    if (c.includes("docker") || c.includes("shell") || c.includes("terminal") || c.includes("cloud")) return '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>';
+    if (c.includes("git")) return '<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>';
+    if (c.includes("database") || c.includes("sql")) return '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>';
+    if (c.includes("code") || c.includes("ci")) return '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>';
+    return '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>';
   }
 </script>
 
+<!-- ─────────────────────────────────────────────────
+     POPUP SHELL  —  Raycast-inspired compact launcher
+───────────────────────────────────────────────── -->
 <div
   bind:this={shell}
-  class="popup-shell flex flex-col h-screen bg-[#171a1d] text-zinc-300 overflow-hidden border border-[#333] rounded-lg font-sans selection:bg-[#FF8A3D]/30 shadow-2xl relative"
+  class="popup-shell flex flex-col h-screen bg-app/[0.97] text-fg overflow-hidden border border-overlay/[0.08] relative"
+  style="backdrop-filter: blur(24px);"
 >
-  <div
-    class="px-3 py-2 border-b border-[#333] bg-[#171a1d] flex items-center gap-2"
-  >
+
+  <!-- ── Search header ───────────────────────────── -->
+  <div class="flex items-center gap-2.5 px-3.5 border-b border-overlay/[0.06] bg-app/[0.6] shrink-0" style="min-height: 48px;">
+
     {#if currentCategory}
+      <!-- Breadcrumb chip -->
       <button
         onclick={() => (currentCategory = null)}
-        class="bg-[#343a42] hover:bg-[#2a3038] text-[10px] px-2 py-0.5 rounded text-white flex items-center"
+        class="flex items-center gap-1.5 shrink-0 h-6 px-2.5 rounded-full bg-[#AEB291]/[0.12] border border-[#AEB291]/[0.2] text-[11px] font-medium text-[#AEB291] hover:bg-[#AEB291]/[0.18] transition-colors"
       >
-        ← {currentCategory}
+        <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="15 18 9 12 15 6"/></svg>
+        {currentCategory}
       </button>
+      <div class="w-px h-4 bg-overlay/[0.08] shrink-0"></div>
+    {:else}
+      <!-- Search icon -->
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-fg/20 shrink-0 pointer-events-none">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
     {/if}
+
     <input
       type="text"
       bind:this={searchInput}
       bind:value={searchQuery}
-      placeholder={currentCategory
-        ? `Search in ${currentCategory}...`
-        : "Search history & groups..."}
-      class="flex-1 bg-transparent text-sm focus:outline-none placeholder:text-zinc-600 font-medium py-1"
+      placeholder={currentCategory ? `Search in ${currentCategory}…` : "Search history, groups…"}
+      class="flex-1 bg-transparent text-[14px] text-fg/75 focus:outline-none placeholder:text-fg/18 py-3"
     />
+
+    {#if searchQuery}
+      <button
+        onclick={() => (searchQuery = "")}
+        aria-label="Clear search"
+        class="shrink-0 text-fg/20 hover:text-fg/50 transition-colors"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    {/if}
   </div>
 
-  <div class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1.5" bind:this={container}>
+  <!-- ── Paste stack banner ───────────────────────── -->
+  {#if stackCount > 0}
+    <div class="flex items-center gap-2 px-3.5 py-1.5 bg-[#FF8A3D]/[0.08] border-b border-[#FF8A3D]/[0.15] shrink-0">
+      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[#FF8A3D] shrink-0"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      <span class="text-[11px] text-fg/65 flex-1 min-w-0 truncate">
+        <span class="font-semibold text-[#FF8A3D]">{stackCount}</span> in paste stack · <kbd class="kbd px-1 py-0.5 text-[9px]">{pasteStackLabel}</kbd> to paste next
+      </span>
+      <button onclick={clearStack} class="text-[10px] text-fg/40 hover:text-[#FF8A3D] transition-colors shrink-0">Clear</button>
+    </div>
+  {/if}
+
+  <!-- ── Item list ────────────────────────────────── -->
+  <div class="flex-1 overflow-y-auto custom-scrollbar py-1.5 px-1.5" bind:this={container}>
+
+    <!-- Group suggestions (while searching without category filter) -->
     {#if !currentCategory}
       {#each filteredCategories as cat, i}
         <div
-          class="w-full px-3 py-2.5 flex items-center justify-between group cursor-default border rounded-md border-[#333]/70 transition-all {i ===
-          selectedIndex
-            ? 'bg-[#2a2f35] text-white shadow-sm'
-            : 'hover:bg-[#343a42]/90'}"
-          onclick={() => {
-            currentCategory = cat;
-            searchQuery = "";
-          }}
-          onkeydown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              currentCategory = cat;
-              searchQuery = "";
-            }
-          }}
-          role="button"
-          tabindex="0"
-          data-index={i}
+          class="relative flex items-center justify-between px-3 py-2 rounded-xl cursor-default transition-all duration-75
+            {i === selectedIndex ? 'bg-overlay/[0.07]' : 'hover:bg-overlay/[0.04]'}"
+          onclick={() => { currentCategory = cat; searchQuery = ""; }}
+          onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); currentCategory = cat; searchQuery = ""; } }}
+          role="button" tabindex="0" data-index={i}
         >
-          <div class="flex items-center space-x-3">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="w-3.5 h-3.5 text-[#FF8A3D]/75"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              ><path
-                d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-              ></path></svg
-            >
-            <span class="text-[13px] font-medium">{cat}</span>
+          {#if i === selectedIndex}
+            <div class="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-5 bg-[#FF8A3D] rounded-r-full" aria-hidden="true"></div>
+          {/if}
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-[22px] h-[22px] flex items-center justify-center rounded-lg bg-[#FF8A3D]/[0.1] text-[#FF8A3D]/60 shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <span class="text-[13px] font-medium text-fg/60 truncate">{cat}</span>
           </div>
-          <span class="text-[10px] text-zinc-600 font-bold">GROUP</span>
+          <span class="text-[9px] font-semibold uppercase tracking-[0.1em] text-fg/20 shrink-0 ml-2">Group</span>
         </div>
       {/each}
     {/if}
 
+    <!-- Clip items -->
     {#each history as item, i}
       {@const idx = i + (currentCategory ? 0 : filteredCategories.length)}
+      {@const isSelected = idx === selectedIndex}
+      {@const itemUrl = (() => { try { if (!item.raw_content.trim().startsWith('http')) return null; return new URL(item.raw_content.trim()).hostname.replace(/^www\./, ''); } catch { return null; } })()}
       <div
-        class="w-full px-3 py-2.5 flex items-center justify-between gap-3 group cursor-default border rounded-md border-[#333]/70 transition-all {idx ===
-        selectedIndex
-          ? 'bg-[#2a2f35] text-white shadow-sm'
-          : 'hover:bg-[#343a42]/90'}"
+        class="relative flex items-center gap-2.5 px-3 py-[8px] rounded-xl cursor-default transition-all duration-100 group
+          {isSelected ? 'bg-overlay/[0.08]' : 'hover:bg-overlay/[0.04]'}"
+        style="{isSelected ? 'box-shadow: inset 0 0 0 1px rgba(255,138,61,0.15)' : ''}"
         onclick={() => copyAndPaste(item)}
         onmouseenter={(e) => handleItemHoverStart(e, item)}
         onmousemove={(e) => handleItemHoverMove(e, item)}
         onmouseleave={() => handleItemHoverEnd(item)}
-        onkeydown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            copyAndPaste(item);
-          }
-        }}
-        role="button"
-        tabindex="0"
-        data-index={idx}
+        onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copyAndPaste(item); } }}
+        role="button" tabindex="0" data-index={idx}
       >
-        <div class="flex items-center space-x-3 min-w-0 flex-1">
-          <!-- Icon Indicator -->
-          <div
-            class="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded bg-[#2a3038] text-zinc-500"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              {@html getCategoryIcon(item.category)}
-            </svg>
-          </div>
+        <!-- Left accent: orange when selected, type color otherwise -->
+        {#if isSelected}
+          <div class="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-6 bg-gradient-to-b from-[#FF8A3D] to-[#ff6b1a] rounded-r-full" aria-hidden="true"></div>
+        {:else if item.is_permanent}
+          <div class="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-4 bg-amber-400/40 rounded-r-full" aria-hidden="true"></div>
+        {:else if itemUrl}
+          <div class="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-4 bg-sky-400/30 rounded-r-full" aria-hidden="true"></div>
+        {/if}
 
-          <p class="text-[13px] text-zinc-200 font-normal leading-relaxed flex-1 break-words whitespace-pre-wrap line-clamp-4">
-            {clipPreview(item.raw_content, item.content_type)}
-          </p>
+        <!-- Type icon -->
+        <div class="w-[22px] h-[22px] flex items-center justify-center rounded-lg bg-overlay/[0.05] text-fg/25 shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            {@html getTypeIcon(item.category)}
+          </svg>
         </div>
 
-        <div class="flex items-center gap-2">
+        <!-- Content — description label + content -->
+        <div class="min-w-0 flex-1 overflow-hidden">
+          {#if item.content_type === "image"}
+            {#if thumbCache[item.id]}
+              <img src={thumbCache[item.id]} alt="Clipboard contents" class="{isSelected ? 'max-h-20' : 'max-h-10'} max-w-full rounded border border-overlay/[0.1] object-contain bg-black/20" />
+            {:else}
+              <span class="text-[13px] text-fg/55">[Image]</span>
+            {/if}
+          {:else if item.content_type === "files"}
+            <div class="flex flex-col gap-1.5">
+              {#each parseFiles(item.raw_content) as f}
+                <div class="flex items-center gap-2 min-w-0" title={f}>
+                  {#if isImagePath(f) && fileThumbCache[f]}
+                    <img src={fileThumbCache[f]} alt="" class="{isSelected ? 'h-11 w-11' : 'h-9 w-9'} rounded-md object-cover border border-overlay/[0.1] shrink-0 bg-black/20" />
+                  {:else}
+                    <span class="flex items-center justify-center {isSelected ? 'h-11 w-11' : 'h-9 w-9'} rounded-md bg-overlay/[0.06] border border-overlay/[0.1] text-[9px] font-bold uppercase tracking-wide text-[#AEB291]/85 shrink-0">{fileExt(f)}</span>
+                  {/if}
+                  <span class="text-[13px] text-fg/65 truncate">{baseName(f)}</span>
+                </div>
+              {/each}
+            </div>
+          {:else if item.is_sensitive}
+            <!-- Sensitive: masked; pasting still works (decrypts on copy) -->
+            <div class="flex items-center gap-2 min-w-0">
+              {#if item.description}
+                <span class="text-[10px] font-semibold text-[#AEB291]/60 shrink-0 tracking-tight">{item.description}</span>
+                <span class="text-fg/18 text-[10px] shrink-0">·</span>
+              {/if}
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-amber-400/60 shrink-0"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span class="text-[13px] tracking-[0.25em] text-fg/45 font-mono select-none">••••••</span>
+            </div>
+          {:else if isSelected}
+            <!-- Expanded: description on its own line, content up to 3 lines -->
+            {#if item.description}
+              <p class="text-[10px] font-semibold text-[#AEB291]/70 truncate mb-0.5 tracking-tight">{item.description}</p>
+            {/if}
+            <p class="text-[13px] text-fg/75 leading-snug break-words line-clamp-3 whitespace-pre-wrap">
+              {clipPreview(item.raw_content, item.content_type)}
+            </p>
+          {:else}
+            <!-- Compact: description · content on one line -->
+            <div class="flex items-baseline gap-1.5 min-w-0">
+              {#if item.description}
+                <span class="text-[10px] font-semibold text-[#AEB291]/60 shrink-0 tracking-tight">{item.description}</span>
+                <span class="text-fg/18 text-[10px] shrink-0">·</span>
+              {:else if itemUrl}
+                <span class="text-[10px] font-semibold text-[#AEB291]/55 shrink-0 tracking-tight">{itemUrl}</span>
+                <span class="text-fg/18 text-[10px] shrink-0">·</span>
+              {/if}
+              <span class="text-[13px] text-fg/55 truncate leading-snug">{clipPreview(item.raw_content, item.content_type)}</span>
+            </div>
+          {/if}
+        </div>
+
+        <!-- Right actions -->
+        <div class="flex items-center gap-0.5 shrink-0">
           <button
-            onclick={(e) => {
-              e.stopPropagation();
-              togglePermanent(item);
-            }}
-            class="p-1 hover:bg-[#343a42] rounded transition-all {item.is_permanent
-              ? 'text-amber-500 opacity-100'
-              : 'text-zinc-500 opacity-0 group-hover:opacity-100'}"
+            onclick={(e) => { e.stopPropagation(); addToStack(item); }}
+            title="Add to paste stack ({namedShortcuts.addToStack})"
+            class="p-1 rounded-lg transition-all text-fg/20 opacity-0 group-hover:opacity-100 hover:text-[#FF8A3D] hover:bg-overlay/[0.06]"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          </button>
+          <!-- Pin: always visible if pinned, hover otherwise -->
+          <button
+            onclick={(e) => { e.stopPropagation(); togglePermanent(item); }}
+            class="p-1 rounded-lg transition-all {item.is_permanent ? 'text-amber-400/80 opacity-100' : 'text-fg/20 opacity-0 group-hover:opacity-100 hover:text-fg/50'} hover:bg-overlay/[0.06]"
             title={item.is_permanent ? "Unpin" : "Pin"}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill={item.is_permanent ? "currentColor" : "none"}
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <line x1="12" y1="17" x2="12" y2="22"></line>
-              <path
-                d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"
-              ></path>
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill={item.is_permanent ? "currentColor" : "none"} stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
             </svg>
           </button>
           <button
-            onclick={(e) => {
-              e.stopPropagation();
-              showGroupSelector = item.id;
-            }}
-            class="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#343a42] rounded transition-all"
+            onclick={(e) => { e.stopPropagation(); showGroupSelector = item.id; }}
+            class="p-1 opacity-0 group-hover:opacity-100 hover:bg-overlay/[0.06] rounded-lg transition-all text-fg/25 hover:text-fg/60"
             title="Save to group"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="w-3 h-3 text-zinc-500"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"><path d="M12 5v14M5 12h14" /></svg
-            >
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
           </button>
           <button
-            onclick={(e) => {
-              e.stopPropagation();
-              deleteItem(item);
-            }}
-            class="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#343a42] rounded transition-all"
+            onclick={(e) => { e.stopPropagation(); deleteItem(item); }}
+            class="p-1 opacity-0 group-hover:opacity-100 hover:bg-[#FF8A3D]/[0.08] rounded-lg transition-all text-fg/25 hover:text-[#FF8A3D]/60"
             title="Delete"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="w-3 h-3 text-zinc-500"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M3 6h18" />
-              <path d="M8 6V4h8v2" />
-              <path d="M6 6l1 14h10l1-14" />
-              <path d="M10 11v6" />
-              <path d="M14 11v6" />
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/>
             </svg>
           </button>
-          <!-- <span
-            class="text-[10px] text-zinc-600 font-mono opacity-0 group-hover:opacity-100"
-          >
-            {new Date(item.created_at).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </span> -->
         </div>
       </div>
     {/each}
+
+    <!-- Empty state -->
+    {#if history.length === 0 && filteredCategories.length === 0}
+      <div class="flex flex-col items-center justify-center py-10 text-center">
+        <div class="w-10 h-10 rounded-2xl bg-overlay/[0.03] border border-overlay/[0.05] flex items-center justify-center mb-3 text-fg/15">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+        </div>
+        <p class="text-[12px] text-fg/25">{searchQuery ? "No results" : "Nothing here yet"}</p>
+      </div>
+    {/if}
   </div>
 
-  <!-- Floating preview panel on hover for long content items -->
-  <!-- {#if hoverPreview && showGroupSelector === null}
-    <div
-      class="absolute z-40 pointer-events-none w-[300px] max-h-[400px] bg-[#171a1d] border border-[#333] rounded-md shadow-2xl shadow-black/40 overflow-hidden"
-      style={`left:${hoverPreview.x}px; top:${hoverPreview.y}px;`}
-    >
-      <div
-        class="px-3 py-1.5 border-b border-[#333] bg-[#2a2f35] flex items-center justify-between"
-      >
-        <span class="text-[9px] font-bold uppercase tracking-wider text-[#FF8A3D]"
-          >Full Preview</span
-        >
-        {#if hoverPreview.category}
-          <span class="text-[9px] font-bold uppercase tracking-wider text-zinc-500"
-            >{hoverPreview.category}</span
-          >
-        {/if}
-      </div>
-      <pre
-        class="p-3 text-[8px] leading-relaxed text-zinc-200 whitespace-pre-wrap max-h-[300px] overflow-y-auto "
-      >{hoverPreview.content}</pre>
-    </div>
-  {/if} -->
-
+  <!-- ── Group selector overlay ───────────────────── -->
   {#if showGroupSelector !== null}
-    <div
-      class="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-    >
-      <div
-        class="bg-[#171a1d] w-full max-w-[240px] rounded-lg border border-[#333] shadow-2xl overflow-hidden flex flex-col max-h-[80%]"
-      >
-        <div
-          class="px-3 py-2 border-b border-[#333] flex justify-between items-center"
-        >
-          <span
-            class="text-[10px] font-bold uppercase tracking-tight text-zinc-400"
-            >Save to Group</span
-          >
-          <button
-            onclick={() => (showGroupSelector = null)}
-            class="text-zinc-500 hover:text-white">✕</button
-          >
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-3 z-50">
+      <div class="bg-surface w-full max-w-[240px] rounded-2xl border border-overlay/[0.08] shadow-2xl shadow-black/60 overflow-hidden flex flex-col max-h-[80%]">
+        <div class="px-4 py-3 border-b border-overlay/[0.06] flex justify-between items-center">
+          <span class="text-[11px] font-semibold text-fg/35 uppercase tracking-widest">Save to Group</span>
+          <button onclick={() => (showGroupSelector = null)} aria-label="Close" class="text-fg/25 hover:text-fg/70 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
-        <div class="overflow-y-auto flex-1 p-1">
+        <div class="overflow-y-auto flex-1 p-1.5 space-y-px">
           {#each categories as cat}
             <button
               onclick={() => addToGroup(showGroupSelector!, cat)}
-              class="w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#343a42] rounded flex items-center gap-2"
+              class="w-full text-left px-3 py-2 text-[12px] hover:bg-overlay/[0.05] rounded-xl transition-colors flex items-center gap-2 text-fg/40 hover:text-fg/80"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-3 h-3 text-[#FF8A3D]/60"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                ><path
-                  d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                ></path></svg
-              >
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-[#FF8A3D]/40 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
               {cat}
             </button>
           {/each}
         </div>
-        <div class="p-2 border-t border-[#333] bg-[#171a1d]">
-          <input
-            type="text"
-            bind:value={newGroupName}
-            placeholder="New group..."
-            class="w-full bg-[#171a1d] border border-[#333] rounded px-2 py-1 text-[11px] text-white placeholder:text-zinc-600 focus:outline-none focus:border-[#AEB291]/45 mb-1.5"
-            onkeydown={(e) =>
-              e.key === "Enter" && createAndAddToGroup(showGroupSelector!)}
-          />
-          <button
-            onclick={() => createAndAddToGroup(showGroupSelector!)}
-            class="w-full bg-[#3F423C] hover:bg-[#4d514a] text-white text-[10px] font-bold py-1 rounded"
-            >CREATE & SAVE</button
-          >
+        <div class="p-2 border-t border-overlay/[0.05]">
+          <input type="text" bind:value={newGroupName} placeholder="New group…"
+            class="w-full bg-overlay/[0.04] border border-overlay/[0.07] rounded-lg px-2.5 py-1.5 text-[12px] text-fg/60 placeholder:text-fg/20 focus:outline-none focus:border-overlay/[0.12] mb-1.5"
+            onkeydown={(e) => e.key === "Enter" && createAndAddToGroup(showGroupSelector!)} />
+          <button onclick={() => createAndAddToGroup(showGroupSelector!)}
+            class="w-full bg-[#AEB291]/70 hover:bg-[#AEB291]/90 text-black text-[11px] font-semibold py-1.5 rounded-lg transition-colors">
+            Create & Save
+          </button>
         </div>
       </div>
     </div>
   {/if}
 
-  <div
-    class="px-3 py-1 border-t border-[#333] bg-[#171a1d] flex justify-between items-center text-[8px] text-zinc-600 font-bold uppercase tracking-tighter"
-  >
-    <span
-      >{history.length} Clips {currentCategory
-        ? `in ${currentCategory}`
-        : `/ ${categories.length} Groups`}</span
-    >
-    <div class="flex space-x-2">
-      <span>⏎ Paste</span>
-      <span>ESC Hide</span>
+  <!-- ── Status bar ────────────────────────────────── -->
+  <div class="px-4 py-2 border-t border-overlay/[0.05] bg-app/[0.4] flex justify-between items-center shrink-0">
+    <span class="text-[9px] font-medium text-fg/20 tracking-wide">
+      {history.length} clips{currentCategory ? ` in ${currentCategory}` : categories.length > 0 ? ` · ${categories.length} groups` : ""}
+    </span>
+    <div class="flex items-center gap-3">
+      <span class="text-[9px] text-fg/35 flex items-center gap-1">
+        <kbd class="kbd px-1 py-0.5 text-[8px]">↵</kbd>
+        paste
+      </span>
+      <span class="text-[9px] text-fg/35 flex items-center gap-1">
+        <kbd class="kbd px-1 py-0.5 text-[8px]">esc</kbd>
+        hide
+      </span>
     </div>
   </div>
+
 </div>
+
+<Toaster />
 
 <style>
   :global(html) {
-    border-radius: 0.375rem !important;
+    border-radius: 14px !important;
     overflow: hidden;
     background: transparent;
   }
-
   :global(body) {
     margin: 0;
     overflow: hidden;
-    border-radius: 0.375rem !important;
+    border-radius: 14px !important;
     background: transparent;
   }
-
   .popup-shell {
-    border-radius: 0.375rem !important;
+    border-radius: 14px !important;
   }
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 3px;
+
+  /* ── Windows ──────────────────────────────────────────
+     The Windows popup window is opaque (transparent compositing is
+     unreliable there). A CSS-rounded shell over a square opaque window
+     leaves bare white triangles in the corners. Fix: fill the window
+     edge-to-edge with the solid app background and let DWM round the
+     window itself (see apply_popup_rounded_corners in lib.rs). No CSS
+     rounding ⇒ no white corner gaps. */
+  :global(html[data-platform="windows"]),
+  :global(html[data-platform="windows"] body) {
+    border-radius: 0 !important;
+    background: rgb(var(--app)) !important;
   }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #333;
-    border-radius: 10px;
+  :global(html[data-platform="windows"]) .popup-shell {
+    border-radius: 0 !important;
+    border-color: transparent !important;
   }
 </style>
