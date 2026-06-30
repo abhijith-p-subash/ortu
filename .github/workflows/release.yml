@@ -5,6 +5,12 @@ on:
     branches:
       - release
       - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.editorconfig'
 
 jobs:
   publish-tauri:
