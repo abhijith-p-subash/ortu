@@ -5,6 +5,21 @@ All notable changes to Ortu are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-07-08
+
+Bug-fix release.
+
+### Fixed
+- **Windows: WIN key not detected when recording shortcuts** — rebinding a
+  global shortcut in Settings recorded the WIN (Super) key as Ctrl (e.g.
+  WIN+ALT+V became CTRL+ALT+V). The WIN/Super key is now captured as its own
+  `Super` modifier; existing shortcuts are unaffected. (#13)
+- **Linux: blank window on Wayland** — the AppImage launched with an empty
+  window on Ubuntu 24.04 (GNOME/Wayland) because WebKitGTK's DMA-BUF renderer
+  fails on some driver/AppImage combinations. Ortu now falls back to WebKit's
+  shared-memory renderer on Linux (override with
+  `WEBKIT_DISABLE_DMABUF_RENDERER=0`). (#14)
+
 ## [2.0.0] - 2026-06-24
 
 Major release focused on capability, privacy, and performance.
@@ -71,6 +86,7 @@ Major release focused on capability, privacy, and performance.
 - Initial public release: text clipboard history, pinning, quick-access popup,
   snippets, backup/restore, local SQLite storage.
 
+[2.0.1]: https://github.com/abhijith-p-subash/ortu/releases/tag/v2.0.1
 [2.0.0]: https://github.com/abhijith-p-subash/ortu/releases
 [1.1.1]: https://github.com/abhijith-p-subash/ortu/releases/tag/v1.1.1
 [1.1.0]: https://github.com/abhijith-p-subash/ortu/releases/tag/v1.1.0

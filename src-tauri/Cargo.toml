@@ -1,6 +1,6 @@
 [package]
 name = "Ortu"
-version = "2.0.0"
+version = "2.0.1"
 description = "A fast, local-first, privacy-focused clipboard manager built with Tauri, Rust, and SvelteKit."
 authors = ["Abhijith P Subash"]
 edition = "2021"
