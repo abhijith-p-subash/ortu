@@ -133,6 +133,7 @@ pub fn register_global_shortcuts(app: &AppHandle) -> Vec<String> {
 pub fn run() {
     install_panic_hook();
     configure_windows_webview2();
+    configure_linux_webkit();
     startup_trace("run: builder init");
 
     let mut builder = tauri::Builder::default();
@@ -464,6 +465,24 @@ fn configure_windows_webview2() {
 
 #[cfg(not(target_os = "windows"))]
 fn configure_windows_webview2() {}
+
+#[cfg(target_os = "linux")]
+fn configure_linux_webkit() {
+    // WebKitGTK ≥ 2.42 hands rendered frames to the UI process as DMA-BUF GPU
+    // buffers. That handshake silently fails on some Wayland setups — notably
+    // AppImage runs (bundled libs vs host Mesa/EGL mismatch) and NVIDIA
+    // proprietary drivers — leaving the window blank while the titlebar still
+    // draws (tauri-apps/tauri#9304). Fall back to WebKit's shared-memory
+    // renderer, which works everywhere; the env var must be set before the
+    // first webview is created. Respect an explicit user override (e.g. =0).
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        startup_trace("run: linux webkit dmabuf renderer disabled");
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn configure_linux_webkit() {}
 
 fn startup_trace(message: &str) {
     let dir = std::env::temp_dir().join("ortu");
