@@ -50,8 +50,21 @@ See the full breakdown in **[docs/FEATURES.md](docs/FEATURES.md)**.
 
 ## Screenshots
 
-> _Add screenshots/GIFs here (main window, quick popup, settings)._
-> Place images under `docs/assets/` and reference them, e.g. `![Main window](docs/assets/main.png)`.
+**Main window** — full clipboard history with search, type filters (URLs, text, files) and groups.
+
+![Main window with clipboard history](docs/assets/1.png)
+
+**Quick popup** — summon a lightweight picker over any app with a global hotkey.
+
+![Quick-access popup over the desktop](docs/assets/2.png)
+
+**Paste Stack** — queue items from any app and paste them back in order.
+
+![Paste Stack panel](docs/assets/4.png)
+
+**Settings** — themes, secret auto-masking, history retention and rebindable global shortcuts.
+
+![Settings window](docs/assets/3.png)
 
 ## Supported Platforms
 
