@@ -16,6 +16,7 @@ manager built with Tauri (Rust) and SvelteKit.
 | [Privacy & Security](PRIVACY_AND_SECURITY.md) | Data handling, encryption, signing |
 | [FAQ](FAQ.md) | Common questions & troubleshooting |
 | [Roadmap](ROADMAP.md) | Planned work |
+| [Founder Story](FOUNDER_STORY.md) | Why Ortu exists (the geeky origin story) |
 
 ## Engineering notes
 
