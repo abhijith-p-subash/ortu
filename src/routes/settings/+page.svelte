@@ -101,7 +101,7 @@
       e.preventDefault();
       e.stopPropagation();
       if (e.key === "Escape") { capturingAction = null; return; }
-      const accel = acceleratorFromEvent(e);
+      const accel = acceleratorFromEvent(e, currentPlatform);
       if (accel) applyCapturedShortcut(capturingAction, accel);
       return;
     }

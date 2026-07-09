@@ -157,7 +157,7 @@ const MODIFIER_KEY_NAMES = new Set([
 
 /** Builds a Tauri accelerator string from a keydown event, or null if the
  *  combo is incomplete (no main key, or no modifier). */
-export function acceleratorFromEvent(e: KeyboardEvent): string | null {
+export function acceleratorFromEvent(e: KeyboardEvent, platform = ""): string | null {
 	if (MODIFIER_KEY_NAMES.has(e.key)) return null; // only modifiers held so far
 
 	const code = e.code;
@@ -171,7 +171,11 @@ export function acceleratorFromEvent(e: KeyboardEvent): string | null {
 	if (!main) return null;
 
 	const mods: string[] = [];
-	if (e.metaKey || e.ctrlKey) mods.push("CommandOrControl");
+	// Meta is ⌘ on macOS (the primary modifier) but the Win/Super key on
+	// Windows & Linux, where it must not be folded into Ctrl.
+	const isMac = isMacPlatform(platform);
+	if (e.metaKey && !isMac) mods.push("Super");
+	if (e.ctrlKey || (e.metaKey && isMac)) mods.push("CommandOrControl");
 	if (e.altKey) mods.push("Alt");
 	if (e.shiftKey) mods.push("Shift");
 	if (mods.length === 0) return null; // global shortcuts require a modifier
