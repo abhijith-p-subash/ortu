@@ -171,11 +171,17 @@ export function acceleratorFromEvent(e: KeyboardEvent, platform = ""): string | 
 	if (!main) return null;
 
 	const mods: string[] = [];
-	// Meta is ⌘ on macOS (the primary modifier) but the Win/Super key on
-	// Windows & Linux, where it must not be folded into Ctrl.
+	// The primary modifier (⌘ on macOS, Ctrl on Windows/Linux) is recorded as
+	// CommandOrControl; the other of the two (⌃ on macOS, Win/Super elsewhere)
+	// is a distinct key and must be recorded as its own modifier.
 	const isMac = isMacPlatform(platform);
-	if (e.metaKey && !isMac) mods.push("Super");
-	if (e.ctrlKey || (e.metaKey && isMac)) mods.push("CommandOrControl");
+	if (isMac) {
+		if (e.metaKey) mods.push("CommandOrControl");
+		if (e.ctrlKey) mods.push("Control");
+	} else {
+		if (e.ctrlKey) mods.push("CommandOrControl");
+		if (e.metaKey) mods.push("Super");
+	}
 	if (e.altKey) mods.push("Alt");
 	if (e.shiftKey) mods.push("Shift");
 	if (mods.length === 0) return null; // global shortcuts require a modifier

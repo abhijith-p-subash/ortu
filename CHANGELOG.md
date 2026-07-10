@@ -5,6 +5,18 @@ All notable changes to Ortu are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-07-10
+
+Bug-fix release.
+
+### Fixed
+- **macOS: Control key recorded as Command when rebinding shortcuts** — in
+  Settings → Global shortcuts, pressing a combo with ⌃ (Control) recorded it as
+  ⌘ (Command), e.g. ⌃⌥V became ⌘⌥V. Every modifier is now captured as its own
+  key on all platforms: ⌘/Ctrl remain the primary modifier, while ⌃ (macOS) and
+  WIN/Super (Windows/Linux) are recorded distinctly. Existing shortcuts are
+  unaffected.
+
 ## [2.0.1] - 2026-07-08
 
 Bug-fix release.
@@ -86,6 +98,7 @@ Major release focused on capability, privacy, and performance.
 - Initial public release: text clipboard history, pinning, quick-access popup,
   snippets, backup/restore, local SQLite storage.
 
+[2.0.2]: https://github.com/abhijith-p-subash/ortu/releases/tag/v2.0.2
 [2.0.1]: https://github.com/abhijith-p-subash/ortu/releases/tag/v2.0.1
 [2.0.0]: https://github.com/abhijith-p-subash/ortu/releases
 [1.1.1]: https://github.com/abhijith-p-subash/ortu/releases/tag/v1.1.1
