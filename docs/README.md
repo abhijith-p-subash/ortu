@@ -14,6 +14,7 @@ manager built with Tauri (Rust) and SvelteKit.
 | [Development](DEVELOPMENT.md) | Getting set up, project structure, conventions |
 | [Build & Release](BUILD_AND_RELEASE.md) | Building installers and publishing releases |
 | [Privacy & Security](PRIVACY_AND_SECURITY.md) | Data handling, encryption, signing |
+| [Code Signing Policy](CODE_SIGNING_POLICY.md) | Who signs releases, and how to verify them |
 | [FAQ](FAQ.md) | Common questions & troubleshooting |
 | [Roadmap](ROADMAP.md) | Planned work |
 | [Founder Story](FOUNDER_STORY.md) | Why Ortu exists (the geeky origin story) |
