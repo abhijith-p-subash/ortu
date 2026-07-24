@@ -96,6 +96,16 @@ open "/Applications/Ortu.app"
 
 This is expected for binaries that aren't notarized with an Apple Developer account. See [docs/PRIVACY_AND_SECURITY.md](docs/PRIVACY_AND_SECURITY.md#distribution--signing).
 
+### Windows SmartScreen note
+
+If Windows shows **"Windows protected your PC"**, click **More info** →
+**Run anyway**. Ortu is open source, so you can review every line before
+installing, and each release is published with a minisign signature the built-in
+updater verifies.
+
+Who is allowed to sign Ortu releases, and how to check a download yourself, is
+documented in the **[Code Signing Policy](docs/CODE_SIGNING_POLICY.md)**.
+
 ## Keyboard shortcuts (defaults)
 
 | Action | macOS | Windows / Linux |
@@ -150,6 +160,7 @@ More detail in **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** and **[docs/BUILD_
 | [Development](docs/DEVELOPMENT.md) | Local dev & project layout |
 | [Build & Release](docs/BUILD_AND_RELEASE.md) | Building & publishing |
 | [Privacy & Security](docs/PRIVACY_AND_SECURITY.md) | Data, encryption, signing |
+| [Code Signing Policy](docs/CODE_SIGNING_POLICY.md) | Who signs releases, and how to verify |
 | [FAQ](docs/FAQ.md) | Common questions |
 | [Roadmap](docs/ROADMAP.md) | What's planned |
 

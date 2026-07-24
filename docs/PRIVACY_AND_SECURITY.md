@@ -67,6 +67,9 @@ you explicitly export it.
 - macOS builds without Apple notarization will trigger Gatekeeper warnings; see
   the README for the quarantine workaround and
   [BUILD_AND_RELEASE.md](BUILD_AND_RELEASE.md#macos-signing--notarization-optional-but-recommended).
+- Who may produce a signed release, how signing keys are held, and how to verify
+  a download are documented in the
+  [Code Signing Policy](CODE_SIGNING_POLICY.md).
 
 ## Reporting a vulnerability
 
