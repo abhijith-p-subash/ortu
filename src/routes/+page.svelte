@@ -1654,7 +1654,7 @@
           <div class="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#FF8A3D]/40 mb-1.5">Privacy First</div>
           <p class="text-[11px] text-fg/35">All data stored locally. No cloud, no tracking.</p>
         </div>
-        <p class="text-center text-[10px] text-fg/15">© 2025 Ortu. All rights reserved.</p>
+        <p class="text-center text-[10px] text-fg/15">© 2025–2026 Abhijith P Subash · Free and open source under the MIT License</p>
       </div>
       <div class="px-5 py-3 border-t border-overlay/[0.05] flex justify-end">
         <button onclick={() => (showAboutModal = false)} class="btn-primary">Close</button>

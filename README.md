@@ -200,4 +200,4 @@ Ortu is free and open source. If it saves you time, you can support development:
 
 ## License
 
-[MIT](LICENSE) © Abhijith P Subash
+[MIT](LICENSE) © 2025–2026 Abhijith P Subash
