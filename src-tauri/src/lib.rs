@@ -733,8 +733,83 @@ fn setup_mac_popup(window: &tauri::WebviewWindow) {
     });
 }
 
+/// The screen to open the popup on: the one under the mouse cursor, falling back
+/// to the one the window already sits on, then the primary.
+///
+/// The cursor is the best available proxy for "the screen the user is working
+/// on". The fallbacks cover platforms that withhold a global cursor position
+/// (Wayland) and macOS, which reports no current monitor while a window is
+/// hidden.
+fn popup_monitor(app: &tauri::AppHandle, window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
+    if let Ok(cursor) = app.cursor_position() {
+        if let Ok(Some(monitor)) = app.monitor_from_point(cursor.x, cursor.y) {
+            return Some(monitor);
+        }
+    }
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        return Some(monitor);
+    }
+    app.primary_monitor().ok().flatten()
+}
+
+/// Centers the popup on the monitor the user is working on.
+///
+/// Replaces `tauri_plugin_positioner`'s `Center`, which resolves against
+/// `current_monitor()` — the monitor the popup is *already* on. The popup is
+/// built lazily at whatever position the OS picks (the primary monitor) and was
+/// then only ever re-centered on itself, so on a multi-monitor desk it stayed on
+/// the primary screen no matter which one the hotkey was pressed from (#21).
+fn center_popup(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {
+    let Some(monitor) = popup_monitor(app, window) else {
+        return;
+    };
+    let (Ok(size), Ok(scale)) = (window.outer_size(), window.scale_factor()) else {
+        return;
+    };
+
+    // Center within the work area, so a taskbar or dock doesn't sit the popup
+    // visually low on screens that have one.
+    let area = monitor.work_area();
+    let (x, y) = centered_in_work_area(
+        (area.position.x, area.position.y),
+        (area.size.width, area.size.height),
+        (size.width, size.height),
+        scale,
+        monitor.scale_factor(),
+    );
+
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+/// Top-left corner that centers a window inside a monitor's work area.
+///
+/// `size`/`scale` describe the window as measured now — physical pixels on the
+/// screen it currently occupies — while `monitor_scale` belongs to the screen it
+/// is moving to. Crossing screens of different DPI resizes the window, so what
+/// this centers has to be the size the window will have once it lands; using the
+/// size it has now pushes the popup off to one side on a mixed-DPI desk.
+fn centered_in_work_area(
+    area_position: (i32, i32),
+    area_size: (u32, u32),
+    size: (u32, u32),
+    scale: f64,
+    monitor_scale: f64,
+) -> (i32, i32) {
+    let scale = if scale > 0.0 { scale } else { 1.0 };
+    let width = (size.0 as f64 / scale * monitor_scale) as i32;
+    let height = (size.1 as f64 / scale * monitor_scale) as i32;
+    (
+        area_position.0 + (area_size.0 as i32 - width) / 2,
+        area_position.1 + (area_size.1 as i32 - height) / 2,
+    )
+}
+
 fn show_popup(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("popup") {
+        // Place before showing: moving a visible window makes the popup flash on
+        // the monitor it is leaving.
+        center_popup(app, &window);
+
         let w = window.clone();
 
         #[cfg(target_os = "macos")]
@@ -768,11 +843,6 @@ fn show_popup(app: &tauri::AppHandle) {
             let _ = window.set_focus();
             let _ = window.set_always_on_top(true);
         }
-
-        let _ = tauri_plugin_positioner::WindowExt::move_window(
-            &window,
-            tauri_plugin_positioner::Position::Center,
-        );
     }
 }
 
@@ -887,4 +957,38 @@ pub(crate) fn write_clipboard_file_paths(paths: &[String]) -> bool {
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn write_clipboard_file_paths(_paths: &[String]) -> bool {
     false
+}
+
+#[cfg(test)]
+mod popup_position_tests {
+    use super::centered_in_work_area;
+
+    #[test]
+    fn centers_on_the_target_monitor_not_the_primary() {
+        // A 1920x1080 secondary sitting to the right of the primary: the popup
+        // has to land inside that monitor's coordinate range, not at x≈685.
+        let placed = centered_in_work_area((1920, 0), (1920, 1080), (550, 450), 1.0, 1.0);
+        assert_eq!(placed, (1920 + 685, 315));
+    }
+
+    #[test]
+    fn resizes_across_monitors_of_different_dpi() {
+        // Popup measured on a 2x screen reads 1100x900, but it will be 550x450
+        // once it lands on the 1x monitor — center against the size it lands at.
+        let placed = centered_in_work_area((1920, 0), (1920, 1080), (1100, 900), 2.0, 1.0);
+        assert_eq!(placed, (1920 + 685, 315));
+    }
+
+    #[test]
+    fn offsets_by_the_work_area_so_a_taskbar_does_not_skew_it() {
+        // 40px taskbar along the top leaves a 1040-high work area.
+        let placed = centered_in_work_area((0, 40), (1920, 1040), (550, 450), 1.0, 1.0);
+        assert_eq!(placed, (685, 40 + 295));
+    }
+
+    #[test]
+    fn treats_a_bogus_scale_factor_as_1x() {
+        let placed = centered_in_work_area((0, 0), (1920, 1080), (550, 450), 0.0, 1.0);
+        assert_eq!(placed, (685, 315));
+    }
 }

@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Quick popup opened on the primary monitor instead of the active one** — on a
+  multi-monitor setup the popup was centered on whichever screen it already
+  occupied, which was the primary one it had been created on, so pressing the
+  hotkey on a second screen still opened it elsewhere. It now opens centered on
+  the monitor holding the mouse cursor, within that monitor's work area, and is
+  positioned before it becomes visible so it no longer flashes on the screen it
+  is leaving. Mixed-DPI setups are accounted for. Platforms that withhold a
+  global cursor position (Wayland) fall back to the previous behaviour. (#21)
 - **"Could not connect to localhost: Connection refused" after login** — the
   launch-at-login entry was written once and never revisited, so an entry left
   by a `tauri dev` run, an earlier install, or an AppImage that has since been
