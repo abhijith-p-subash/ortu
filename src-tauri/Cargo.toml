@@ -1,6 +1,6 @@
 [package]
 name = "Ortu"
-version = "2.0.2"
+version = "2.1.0"
 description = "A fast, local-first, privacy-focused clipboard manager built with Tauri, Rust, and SvelteKit."
 authors = ["Abhijith P Subash"]
 edition = "2021"
@@ -75,5 +75,8 @@ cocoa = "0.25"
 objc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+# Reads back the HKCU Run entry so a stale autostart path can be detected.
+# Already in the tree via tauri-plugin-autostart, so this costs no build time.
+winreg = "0.55"
 raw-window-handle = "0.6"
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }

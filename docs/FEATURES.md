@@ -100,5 +100,6 @@ Pinned items and items in a user group are **always** kept. See
 - **Global hotkeys** — open popup, copy-to-stack, paste-next; all rebindable.
 - **Auto-start on login.**
 - **Tray icon** with show/quit.
-- **Auto-update** via the Tauri updater plugin (GitHub Releases).
+- **Update notices** in both windows when a new GitHub release lands, linking to
+  the installer for your platform.
 - **Themes** — light / dark / system, with a native-matching titlebar.

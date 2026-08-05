@@ -5,6 +5,50 @@ All notable changes to Ortu are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-08-05
+
+Update delivery is reworked, and two long-standing platform bugs are fixed.
+
+### Changed
+- **Updates are download-only; the in-app installer is gone** — "Update &
+  Restart" downloaded and installed a new build in place, and failed every time
+  on shipped builds. The notice now offers a single action, **Download update**,
+  which opens the installer matching your OS and architecture (`.dmg`,
+  `-setup.exe`, `.AppImage`, …). The old secondary "Manual" button is gone with
+  it — there is one path now, and it is named for what it does.
+- **The update notice appears in the quick popup too** — as a compact strip
+  above the list, since the popup is where most time is spent. The release check
+  is cached and shared between both windows, so opening the popup costs no extra
+  network traffic. Dismissing a version hides it in both windows until a newer
+  release lands.
+- **Launching at login opens to the tray** — the startup entry now passes
+  `--hidden`, which Ortu already understood but was never given, so a login
+  launch no longer raises the main window. If the tray is unavailable the window
+  is shown anyway, so there is always a way into the app.
+- **Licensing is stated consistently** — the About dialog claimed "All rights
+  reserved", which contradicts the MIT licence the project ships under; it now
+  credits the copyright holder and names the licence. Installers and app
+  metadata carry a copyright string, publisher, and a bundled copy of `LICENSE`,
+  which they previously shipped without.
+
+### Fixed
+- **Quick popup opened on the primary monitor instead of the active one** — on a
+  multi-monitor setup the popup was centered on whichever screen it already
+  occupied, which was the primary one it had been created on, so pressing the
+  hotkey on a second screen still opened it elsewhere. It now opens centered on
+  the monitor holding the mouse cursor, within that monitor's work area, and is
+  positioned before it becomes visible so it no longer flashes on the screen it
+  is leaving. Mixed-DPI setups are accounted for. Platforms that withhold a
+  global cursor position (Wayland) fall back to the previous behaviour. (#21)
+- **"Could not connect to localhost: Connection refused" after login** — the
+  launch-at-login entry was written once and never revisited, so an entry left
+  by a `tauri dev` run, an earlier install, or an AppImage that has since been
+  moved or upgraded kept being used at login. A dev binary has the Vite
+  dev-server URL compiled in, so nothing is listening that early and the window
+  came up on WebKit's error page. Ortu now re-points a stale entry at the
+  current executable on every release launch, and debug builds no longer
+  register themselves at all. (#20)
+
 ## [2.0.2] - 2026-07-10
 
 Bug-fix release.
@@ -98,6 +142,7 @@ Major release focused on capability, privacy, and performance.
 - Initial public release: text clipboard history, pinning, quick-access popup,
   snippets, backup/restore, local SQLite storage.
 
+[2.1.0]: https://github.com/abhijith-p-subash/ortu/releases/tag/v2.1.0
 [2.0.2]: https://github.com/abhijith-p-subash/ortu/releases/tag/v2.0.2
 [2.0.1]: https://github.com/abhijith-p-subash/ortu/releases/tag/v2.0.1
 [2.0.0]: https://github.com/abhijith-p-subash/ortu/releases

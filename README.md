@@ -43,7 +43,7 @@ It captures **text, images, and files**, auto-organizes clips into groups, masks
 - 🎨 **Themes** — light, dark, or follow system.
 - 🧹 **Flexible history retention** — clear on reboot (default), keep forever, or age/count limits. Pinned & grouped items are always kept.
 - 💾 **Backup & restore** — JSON backup/restore and plain-text export.
-- 🔄 **Auto-update** — signed updates delivered via GitHub Releases.
+- 🔄 **Update notices** — Ortu tells you when a new release lands, in both the main window and the popup, and links straight to the installer for your platform.
 - 🪶 **Lightweight & native** — no bundled browser; a single small binary per platform.
 
 See the full breakdown in **[docs/FEATURES.md](docs/FEATURES.md)**.
@@ -100,8 +100,8 @@ This is expected for binaries that aren't notarized with an Apple Developer acco
 
 If Windows shows **"Windows protected your PC"**, click **More info** →
 **Run anyway**. Ortu is open source, so you can review every line before
-installing, and each release is published with a minisign signature the built-in
-updater verifies.
+installing, and each release is published with a minisign signature you can
+verify yourself.
 
 Who is allowed to sign Ortu releases, and how to check a download yourself, is
 documented in the **[Code Signing Policy](docs/CODE_SIGNING_POLICY.md)**.
@@ -200,4 +200,4 @@ Ortu is free and open source. If it saves you time, you can support development:
 
 ## License
 
-[MIT](LICENSE) © Abhijith P Subash
+[MIT](LICENSE) © 2025–2026 Abhijith P Subash

@@ -8,8 +8,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { buildSearchQuery, clipPreview } from "$lib/filters";
   import { getKeyLabels, getShortcutSections, getNamedShortcuts, prettyAccelerator } from "$lib/shortcuts";
-  import { checkForUpdates as runUpdateCheck, getOsInstallerUrl } from "$lib/updater";
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { getAvailableUpdate, downloadUpdate, dismissUpdate, isUpdateDismissed } from "$lib/updater";
   import { goto } from "$app/navigation";
   import { showToast } from "$lib/toast";
   import Toaster from "$lib/Toaster.svelte";
@@ -146,9 +145,6 @@
   let showStackPanel = $state(false);
   let updateAvailable = $state(false);
   let latestVersion = $state("");
-  let updateInstalling = $state(false);
-  let updateProgress = $state(-1); // -1 = indeterminate, 0–100 = percent
-  let releaseUrl = $state("https://github.com/abhijith-p-subash/ortu/releases/latest");
   let showAddItemModal = $state(false);
   let newItemContent = $state("");
   let newItemDescription = $state("");
@@ -453,55 +449,32 @@
     showImportModal = true;
   }
 
-  // ── Auto-update (Tauri updater plugin) ─────────────────
+  // ── Update notice ──────────────────────────────────────
+  //
+  // Detection only. In-app download/install was removed: it failed on every
+  // shipped build, so the banner now points at the platform installer, which
+  // is the one path that actually works. See $lib/updater.
 
-  // Detect a newer signed release and surface the banner. Install is deferred
-  // to a user click so we never restart the app from under them unexpectedly.
-  async function checkForUpdates(silent = true) {
-    await runUpdateCheck({
-      onAvailable: (version) => {
-        latestVersion = version;
-        updateAvailable = true;
-        return false; // show banner; download happens in installUpdate()
-      },
-      onUpToDate: () => { if (!silent) showToast("Ortu is up to date", "success"); },
-      onError: (e) => {
-        console.error("Update check failed:", e);
-        if (!silent) showToast("Couldn't check for updates", "error");
-      },
-    });
+  async function checkForUpdates() {
+    const update = await getAvailableUpdate();
+    if (!update || isUpdateDismissed(update.version)) return;
+    latestVersion = update.version;
+    updateAvailable = true;
   }
 
-  // Download, verify, install the update, then relaunch.
-  async function installUpdate() {
-    if (updateInstalling) return;
-    updateInstalling = true;
-    updateProgress = -1;
-    await runUpdateCheck({
-      onAvailable: () => true,
-      onProgress: (downloaded, total) => {
-        updateProgress = total ? Math.round((downloaded / total) * 100) : -1;
-      },
-      onReadyToRestart: () => true,
-      onUpToDate: () => { updateAvailable = false; showToast("Already up to date", "info"); },
-      onError: (e) => {
-        console.error("Update install failed:", e);
-        showToast("Update failed — download it manually instead", "error");
-      },
-    });
-    updateInstalling = false;
-  }
-
-  // Fallback: open the OS-specific installer (.dmg / -setup.exe / .AppImage) in
-  // the browser, in case the in-app updater can't run.
-  async function manualDownload() {
+  // Opens the .dmg / -setup.exe / .AppImage for this machine in the browser.
+  async function openUpdateDownload() {
     try {
-      const url = await getOsInstallerUrl();
-      await openUrl(url);
+      await downloadUpdate();
     } catch (e) {
-      console.error("Manual download failed:", e);
-      await openUrl(releaseUrl);
+      console.error("Opening the update download failed:", e);
+      showToast("Couldn't open the download page", "error");
     }
+  }
+
+  function dismissUpdateNotice() {
+    dismissUpdate(latestVersion);
+    updateAvailable = false;
   }
 
   // ── Group management ───────────────────────────────────
@@ -961,18 +934,13 @@
   {#if updateAvailable}
     <div class="mx-3 mt-2 flex items-center justify-between rounded-lg bg-[#AEB291]/[0.07] border border-[#AEB291]/[0.15] px-3 py-2">
       <p class="text-[11px] text-fg/50">
-        <span class="font-semibold text-fg/80">v{latestVersion}</span> is available{#if updateInstalling} · {updateProgress < 0 ? "downloading…" : `${updateProgress}%`}{/if}
+        Ortu <span class="font-semibold text-fg/80">v{latestVersion}</span> is available
       </p>
       <div class="flex items-center gap-3 shrink-0">
-        {#if updateInstalling}
-          <span class="text-[11px] font-semibold text-[#AEB291]">Installing…</span>
-        {:else}
-          <button onclick={installUpdate} class="text-[11px] font-semibold text-[#AEB291] hover:text-fg transition-colors">Update &amp; Restart →</button>
-          <button onclick={manualDownload} class="text-[11px] text-fg/30 hover:text-fg/60 transition-colors">Manual</button>
-          <button onclick={() => (updateAvailable = false)} aria-label="Dismiss" class="text-fg/25 hover:text-fg/60 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        {/if}
+        <button onclick={openUpdateDownload} class="text-[11px] font-semibold text-[#AEB291] hover:text-fg transition-colors">Download update →</button>
+        <button onclick={dismissUpdateNotice} aria-label="Dismiss" class="text-fg/25 hover:text-fg/60 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
     </div>
   {/if}
@@ -1686,7 +1654,7 @@
           <div class="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#FF8A3D]/40 mb-1.5">Privacy First</div>
           <p class="text-[11px] text-fg/35">All data stored locally. No cloud, no tracking.</p>
         </div>
-        <p class="text-center text-[10px] text-fg/15">© 2025 Ortu. All rights reserved.</p>
+        <p class="text-center text-[10px] text-fg/15">© 2025–2026 Abhijith P Subash · Free and open source under the MIT License</p>
       </div>
       <div class="px-5 py-3 border-t border-overlay/[0.05] flex justify-end">
         <button onclick={() => (showAboutModal = false)} class="btn-primary">Close</button>

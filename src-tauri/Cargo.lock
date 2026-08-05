@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "Ortu"
-version = "2.0.2"
+version = "2.1.0"
 dependencies = [
  "aes-gcm",
  "arboard",
@@ -38,6 +38,7 @@ dependencies = [
  "tokio",
  "urlencoding",
  "windows 0.61.3",
+ "winreg 0.55.0",
 ]
 
 [[package]]

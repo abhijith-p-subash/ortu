@@ -84,8 +84,8 @@ Signed binaries are **only ever produced by CI** — never on a developer machin
    SignPath verifies the build originated from this repository and workflow
    before signing — see [Signing](#signing).
 4. The signed artifacts are attached to a **draft** GitHub Release.
-5. A maintainer verifies the signatures and the auto-update path, then
-   publishes the release.
+5. A maintainer verifies the signatures and that the release carries
+   `latest.json` plus an installer for every platform, then publishes it.
 
 Because the build inputs are the public source tree and the build runs on
 ephemeral GitHub runners, anyone can inspect exactly what went into a release.
@@ -116,10 +116,11 @@ Gatekeeper warning are in the [README](../README.md#macos-gatekeeper-note-unsign
 ### Update signatures
 
 Separately from Authenticode, every release artifact carries a `.sig` file — a
-[minisign](https://jedisct1.github.io/minisign/) signature checked by Ortu's
-built-in updater against the public key embedded in
-[`src-tauri/tauri.conf.json`](../src-tauri/tauri.conf.json). This prevents an
-update from being swapped out in transit, on every platform.
+[minisign](https://jedisct1.github.io/minisign/) signature made against the
+public key embedded in
+[`src-tauri/tauri.conf.json`](../src-tauri/tauri.conf.json). Ortu's update check
+verifies the release manifest against that key, and you can verify any download
+yourself with the same key, on every platform.
 
 The corresponding private key is stored as a GitHub Actions secret, is only
 accessible to the release workflow, and is never present on a developer

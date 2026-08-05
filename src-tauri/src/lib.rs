@@ -1,4 +1,5 @@
 #![allow(unexpected_cfgs)]
+mod autostart;
 mod clipboard;
 mod commands;
 mod crypto;
@@ -19,7 +20,6 @@ use tauri::Manager;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{Shortcut, ShortcutState};
 
 #[cfg(target_os = "windows")]
@@ -155,7 +155,8 @@ pub fn run() {
     builder = builder
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec![]),
+            // Login launches start in the tray; `setup` reads the flag back.
+            Some(vec![autostart::HIDDEN_FLAG]),
         ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -198,16 +199,7 @@ pub fn run() {
             // are managed (they are read from user settings). See below.
 
             // ---------------- ARGUMENT CHECK (AUTOSTART VS MANUAL) ----------------
-            let args: Vec<String> = std::env::args().collect();
-            let mut is_hidden = false;
-
-            // Defensive parsing of arguments
-            for arg in &args {
-                if arg == "--hidden" {
-                    is_hidden = true;
-                    break;
-                }
-            }
+            let is_hidden = autostart::launched_hidden();
 
             if is_hidden {
                 if let Some(window) = app.get_webview_window("main") {
@@ -291,6 +283,14 @@ pub fn run() {
                 false
             };
 
+            // A hidden launch reaches the app through the tray. With no tray
+            // there is no way in, so show the window rather than boot into
+            // something the user cannot see.
+            if is_hidden && !tray_enabled {
+                startup_trace("setup: no tray, showing window despite --hidden");
+                show_main_window(app.handle());
+            }
+
             // macOS: Run as background accessory app (no dock icon, stays in menu bar)
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -332,21 +332,9 @@ pub fn run() {
             // Global shortcut plugin moved to builder chain.
 
             // ---------------- AUTOSTART ----------------
-            // Only enable autostart if logic requires it, avoid aggressive re-enabling which might corrupt registry
-            {
-                let autostart_manager = app.autolaunch();
-                if let Ok(enabled) = autostart_manager.is_enabled() {
-                    if !enabled {
-                        log::info!("Autostart not enabled. Enabling...");
-                        match autostart_manager.enable() {
-                            Ok(_) => log::info!("Autostart enabled successfully."),
-                            Err(e) => log::error!("Failed to enable autostart: {}", e),
-                        }
-                    }
-                } else {
-                    log::error!("Failed to check autostart status");
-                }
-            }
+            // Registers the startup entry and, crucially, repairs one that has
+            // gone stale — see the `autostart` module docs.
+            autostart::sync(app.handle());
 
             startup_trace("setup: completed");
             Ok(())
@@ -484,7 +472,7 @@ fn configure_linux_webkit() {
 #[cfg(not(target_os = "linux"))]
 fn configure_linux_webkit() {}
 
-fn startup_trace(message: &str) {
+pub(crate) fn startup_trace(message: &str) {
     let dir = std::env::temp_dir().join("ortu");
     let path = dir.join("startup.log");
     let _ = fs::create_dir_all(&dir);
@@ -745,8 +733,83 @@ fn setup_mac_popup(window: &tauri::WebviewWindow) {
     });
 }
 
+/// The screen to open the popup on: the one under the mouse cursor, falling back
+/// to the one the window already sits on, then the primary.
+///
+/// The cursor is the best available proxy for "the screen the user is working
+/// on". The fallbacks cover platforms that withhold a global cursor position
+/// (Wayland) and macOS, which reports no current monitor while a window is
+/// hidden.
+fn popup_monitor(app: &tauri::AppHandle, window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
+    if let Ok(cursor) = app.cursor_position() {
+        if let Ok(Some(monitor)) = app.monitor_from_point(cursor.x, cursor.y) {
+            return Some(monitor);
+        }
+    }
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        return Some(monitor);
+    }
+    app.primary_monitor().ok().flatten()
+}
+
+/// Centers the popup on the monitor the user is working on.
+///
+/// Replaces `tauri_plugin_positioner`'s `Center`, which resolves against
+/// `current_monitor()` — the monitor the popup is *already* on. The popup is
+/// built lazily at whatever position the OS picks (the primary monitor) and was
+/// then only ever re-centered on itself, so on a multi-monitor desk it stayed on
+/// the primary screen no matter which one the hotkey was pressed from (#21).
+fn center_popup(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {
+    let Some(monitor) = popup_monitor(app, window) else {
+        return;
+    };
+    let (Ok(size), Ok(scale)) = (window.outer_size(), window.scale_factor()) else {
+        return;
+    };
+
+    // Center within the work area, so a taskbar or dock doesn't sit the popup
+    // visually low on screens that have one.
+    let area = monitor.work_area();
+    let (x, y) = centered_in_work_area(
+        (area.position.x, area.position.y),
+        (area.size.width, area.size.height),
+        (size.width, size.height),
+        scale,
+        monitor.scale_factor(),
+    );
+
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+/// Top-left corner that centers a window inside a monitor's work area.
+///
+/// `size`/`scale` describe the window as measured now — physical pixels on the
+/// screen it currently occupies — while `monitor_scale` belongs to the screen it
+/// is moving to. Crossing screens of different DPI resizes the window, so what
+/// this centers has to be the size the window will have once it lands; using the
+/// size it has now pushes the popup off to one side on a mixed-DPI desk.
+fn centered_in_work_area(
+    area_position: (i32, i32),
+    area_size: (u32, u32),
+    size: (u32, u32),
+    scale: f64,
+    monitor_scale: f64,
+) -> (i32, i32) {
+    let scale = if scale > 0.0 { scale } else { 1.0 };
+    let width = (size.0 as f64 / scale * monitor_scale) as i32;
+    let height = (size.1 as f64 / scale * monitor_scale) as i32;
+    (
+        area_position.0 + (area_size.0 as i32 - width) / 2,
+        area_position.1 + (area_size.1 as i32 - height) / 2,
+    )
+}
+
 fn show_popup(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("popup") {
+        // Place before showing: moving a visible window makes the popup flash on
+        // the monitor it is leaving.
+        center_popup(app, &window);
+
         let w = window.clone();
 
         #[cfg(target_os = "macos")]
@@ -780,11 +843,6 @@ fn show_popup(app: &tauri::AppHandle) {
             let _ = window.set_focus();
             let _ = window.set_always_on_top(true);
         }
-
-        let _ = tauri_plugin_positioner::WindowExt::move_window(
-            &window,
-            tauri_plugin_positioner::Position::Center,
-        );
     }
 }
 
@@ -899,4 +957,38 @@ pub(crate) fn write_clipboard_file_paths(paths: &[String]) -> bool {
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn write_clipboard_file_paths(_paths: &[String]) -> bool {
     false
+}
+
+#[cfg(test)]
+mod popup_position_tests {
+    use super::centered_in_work_area;
+
+    #[test]
+    fn centers_on_the_target_monitor_not_the_primary() {
+        // A 1920x1080 secondary sitting to the right of the primary: the popup
+        // has to land inside that monitor's coordinate range, not at x≈685.
+        let placed = centered_in_work_area((1920, 0), (1920, 1080), (550, 450), 1.0, 1.0);
+        assert_eq!(placed, (1920 + 685, 315));
+    }
+
+    #[test]
+    fn resizes_across_monitors_of_different_dpi() {
+        // Popup measured on a 2x screen reads 1100x900, but it will be 550x450
+        // once it lands on the 1x monitor — center against the size it lands at.
+        let placed = centered_in_work_area((1920, 0), (1920, 1080), (1100, 900), 2.0, 1.0);
+        assert_eq!(placed, (1920 + 685, 315));
+    }
+
+    #[test]
+    fn offsets_by_the_work_area_so_a_taskbar_does_not_skew_it() {
+        // 40px taskbar along the top leaves a 1040-high work area.
+        let placed = centered_in_work_area((0, 40), (1920, 1040), (550, 450), 1.0, 1.0);
+        assert_eq!(placed, (685, 40 + 295));
+    }
+
+    #[test]
+    fn treats_a_bogus_scale_factor_as_1x() {
+        let placed = centered_in_work_area((0, 0), (1920, 1080), (550, 450), 0.0, 1.0);
+        assert_eq!(placed, (685, 315));
+    }
 }
