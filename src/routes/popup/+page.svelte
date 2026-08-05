@@ -8,6 +8,7 @@
   import { platform } from "@tauri-apps/plugin-os";
   import { getNamedShortcuts, prettyAccelerator } from "$lib/shortcuts";
   import { showToast } from "$lib/toast";
+  import { getAvailableUpdate, downloadUpdate, dismissUpdate, isUpdateDismissed } from "$lib/updater";
   import Toaster from "$lib/Toaster.svelte";
   import "../../app.css";
 
@@ -44,6 +45,29 @@
     const i = name.lastIndexOf(".");
     if (i <= 0 || i === name.length - 1) return "FILE";
     return name.slice(i + 1).toUpperCase().slice(0, 4);
+  }
+
+  // Update notice — mirrored from the main window, because the popup is where
+  // most people actually spend their time. The check is cached in $lib/updater,
+  // so opening the popup does not mean a request every time.
+  let updateVersion = $state("");
+
+  async function loadUpdateNotice() {
+    const update = await getAvailableUpdate();
+    updateVersion = update && !isUpdateDismissed(update.version) ? update.version : "";
+  }
+
+  async function openUpdateDownload() {
+    try { await downloadUpdate(); }
+    catch (e) {
+      console.error("Opening the update download failed:", e);
+      showToast("Couldn't open the download page", "error");
+    }
+  }
+
+  function dismissUpdateNotice() {
+    dismissUpdate(updateVersion);
+    updateVersion = "";
   }
 
   // Paste stack
@@ -257,10 +281,12 @@
       try {
         try { currentPlatform = await platform(); } catch { /* keep default */ }
         try { customShortcuts = (await invoke("get_shortcuts")) as Record<string, string>; } catch { /* defaults */ }
+        void loadUpdateNotice(); // fire-and-forget: opening the popup must never wait on the network
         const unFocus = await listen("tauri://focus", () => {
           applyTheme(getStoredTheme()); // pick up theme changes made in the main window
           currentCategory = null; searchQuery = ""; selectedIndex = 0; hoverPreview = null;
           loadData();
+          void loadUpdateNotice(); // picks up a check the main window already paid for
           tick().then(() => {
             searchInput?.focus();
             container?.scrollTo({ top: 0, behavior: "instant" });
@@ -348,6 +374,20 @@
         <span class="font-semibold text-[#FF8A3D]">{stackCount}</span> in paste stack · <kbd class="kbd px-1 py-0.5 text-[9px]">{pasteStackLabel}</kbd> to paste next
       </span>
       <button onclick={clearStack} class="text-[10px] text-fg/40 hover:text-[#FF8A3D] transition-colors shrink-0">Clear</button>
+    </div>
+  {/if}
+
+  <!-- ── Update notice ────────────────────────────── -->
+  {#if updateVersion}
+    <div class="flex items-center gap-2 px-3.5 py-1.5 bg-[#AEB291]/[0.08] border-b border-[#AEB291]/[0.15] shrink-0">
+      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[#AEB291] shrink-0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span class="text-[11px] text-fg/65 flex-1 min-w-0 truncate">
+        Ortu <span class="font-semibold text-[#AEB291]">v{updateVersion}</span> is available
+      </span>
+      <button onclick={openUpdateDownload} class="text-[10px] font-semibold text-[#AEB291] hover:text-fg transition-colors shrink-0">Download</button>
+      <button onclick={dismissUpdateNotice} aria-label="Dismiss update notice" class="text-fg/25 hover:text-fg/60 transition-colors shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
   {/if}
 

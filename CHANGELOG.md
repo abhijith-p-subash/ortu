@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Updates are download-only; the in-app installer is gone** — "Update &
+  Restart" downloaded and installed a new build in place, and failed every time
+  on shipped builds. The notice now offers a single action, **Download update**,
+  which opens the installer matching your OS and architecture (`.dmg`,
+  `-setup.exe`, `.AppImage`, …). The old secondary "Manual" button is gone with
+  it — there is one path now, and it is named for what it does.
+- **The update notice appears in the quick popup too** — as a compact strip
+  above the list, since the popup is where most time is spent. The release check
+  is cached and shared between both windows, so opening the popup costs no extra
+  network traffic. Dismissing a version hides it in both windows until a newer
+  release lands.
+
 ### Fixed
 - **Quick popup opened on the primary monitor instead of the active one** — on a
   multi-monitor setup the popup was centered on whichever screen it already
