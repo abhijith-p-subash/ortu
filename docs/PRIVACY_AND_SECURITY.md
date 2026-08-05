@@ -61,9 +61,10 @@ you explicitly export it.
 
 ## Distribution & signing
 
-- Release artifacts are built in CI and the **updater verifies downloads against
-  a public key** embedded in `tauri.conf.json`, so updates can't be silently
-  swapped.
+- Release artifacts are built in CI and **published with minisign signatures**
+  you can verify against the public key embedded in `tauri.conf.json`, so a
+  tampered download is detectable. The update check reads the same signed
+  manifest; Ortu never installs anything on its own.
 - macOS builds without Apple notarization will trigger Gatekeeper warnings; see
   the README for the quarantine workaround and
   [BUILD_AND_RELEASE.md](BUILD_AND_RELEASE.md#macos-signing--notarization-optional-but-recommended).

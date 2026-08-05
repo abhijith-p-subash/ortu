@@ -66,8 +66,17 @@ Install the WebKitGTK/GTK dev packages listed in
 ## Updates
 
 **How do updates work?**
-Ortu checks GitHub Releases and installs signed updates verified against an
-embedded public key. See [BUILD_AND_RELEASE.md](BUILD_AND_RELEASE.md#auto-update-flow).
+Ortu checks GitHub Releases and shows a notice when a newer version exists — in
+the main window and in the quick popup. Clicking **Download update** opens the
+installer for your OS and architecture; you install it the same way you did the
+first time. Ortu does not replace itself in place. See
+[BUILD_AND_RELEASE.md](BUILD_AND_RELEASE.md#update-flow).
+
+**Why doesn't Ortu install updates by itself?**
+In-app installation needs signed builds to be reliable, and Ortu is not yet code
+signed on macOS or Windows. Until that is in place, the download-and-install
+path is the one that actually works. See
+[CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md).
 
 ## Still stuck?
 

@@ -52,8 +52,17 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version
-          releaseName: "App v__VERSION__"
-          releaseBody: "See the assets to download this version and install."
+          # Build a universal macOS binary so Intel Macs are covered. Without an
+          # explicit target the runner only builds its own arch (arm64), which
+          # left Intel users with no .dmg and no `darwin-x86_64` entry in
+          # latest.json — so they could neither install nor be told about updates.
+          args: ${{ matrix.platform == 'macos-latest' && '--target universal-apple-darwin' || '' }}
+          # `v__VERSION__` matches every historical tag and the CHANGELOG links.
+          # Do not tag manually as well: two tags per version means two releases,
+          # and `releases/latest` (which the updater reads) resolves to whichever
+          # was published last.
+          tagName: v__VERSION__ # the action replaces __VERSION__ with the app version
+          releaseName: "Ortu v__VERSION__"
+          releaseBody: "See [CHANGELOG.md](https://github.com/abhijith-p-subash/ortu/blob/main/CHANGELOG.md) for what changed, and the assets below to download this version."
           releaseDraft: true
           prerelease: false

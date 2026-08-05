@@ -85,5 +85,7 @@ sensitive if your history contains secrets.
 ## Autostart & updates
 
 - **Autostart on login** is enabled by the app on first run.
-- **Auto-update** checks GitHub Releases via the Tauri updater plugin and applies
-  signed updates. The update endpoint and public key live in `tauri.conf.json`.
+- **Update notices** check GitHub Releases via the Tauri updater plugin and show
+  a banner when a newer version exists; the download and install happen in your
+  browser and the platform installer, not inside Ortu. The update endpoint and
+  public key live in `tauri.conf.json`.

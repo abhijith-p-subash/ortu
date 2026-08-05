@@ -5,7 +5,9 @@ All notable changes to Ortu are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] - 2026-08-05
+
+Update delivery is reworked, and two long-standing platform bugs are fixed.
 
 ### Changed
 - **Updates are download-only; the in-app installer is gone** — "Update &
@@ -19,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is cached and shared between both windows, so opening the popup costs no extra
   network traffic. Dismissing a version hides it in both windows until a newer
   release lands.
+- **Launching at login opens to the tray** — the startup entry now passes
+  `--hidden`, which Ortu already understood but was never given, so a login
+  launch no longer raises the main window. If the tray is unavailable the window
+  is shown anyway, so there is always a way into the app.
+- **Licensing is stated consistently** — the About dialog claimed "All rights
+  reserved", which contradicts the MIT licence the project ships under; it now
+  credits the copyright holder and names the licence. Installers and app
+  metadata carry a copyright string, publisher, and a bundled copy of `LICENSE`,
+  which they previously shipped without.
 
 ### Fixed
 - **Quick popup opened on the primary monitor instead of the active one** — on a
@@ -37,12 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   came up on WebKit's error page. Ortu now re-points a stale entry at the
   current executable on every release launch, and debug builds no longer
   register themselves at all. (#20)
-
-### Changed
-- **Launching at login opens to the tray** — the startup entry now passes
-  `--hidden`, which Ortu already understood but was never given, so a login
-  launch no longer raises the main window. If the tray is unavailable the window
-  is shown anyway, so there is always a way into the app.
 
 ## [2.0.2] - 2026-07-10
 
@@ -137,6 +142,7 @@ Major release focused on capability, privacy, and performance.
 - Initial public release: text clipboard history, pinning, quick-access popup,
   snippets, backup/restore, local SQLite storage.
 
+[2.1.0]: https://github.com/abhijith-p-subash/ortu/releases/tag/v2.1.0
 [2.0.2]: https://github.com/abhijith-p-subash/ortu/releases/tag/v2.0.2
 [2.0.1]: https://github.com/abhijith-p-subash/ortu/releases/tag/v2.0.1
 [2.0.0]: https://github.com/abhijith-p-subash/ortu/releases
