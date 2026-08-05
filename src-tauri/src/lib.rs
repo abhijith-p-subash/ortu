@@ -1,4 +1,5 @@
 #![allow(unexpected_cfgs)]
+mod autostart;
 mod clipboard;
 mod commands;
 mod crypto;
@@ -19,7 +20,6 @@ use tauri::Manager;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{Shortcut, ShortcutState};
 
 #[cfg(target_os = "windows")]
@@ -155,7 +155,8 @@ pub fn run() {
     builder = builder
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec![]),
+            // Login launches start in the tray; `setup` reads the flag back.
+            Some(vec![autostart::HIDDEN_FLAG]),
         ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -198,16 +199,7 @@ pub fn run() {
             // are managed (they are read from user settings). See below.
 
             // ---------------- ARGUMENT CHECK (AUTOSTART VS MANUAL) ----------------
-            let args: Vec<String> = std::env::args().collect();
-            let mut is_hidden = false;
-
-            // Defensive parsing of arguments
-            for arg in &args {
-                if arg == "--hidden" {
-                    is_hidden = true;
-                    break;
-                }
-            }
+            let is_hidden = autostart::launched_hidden();
 
             if is_hidden {
                 if let Some(window) = app.get_webview_window("main") {
@@ -291,6 +283,14 @@ pub fn run() {
                 false
             };
 
+            // A hidden launch reaches the app through the tray. With no tray
+            // there is no way in, so show the window rather than boot into
+            // something the user cannot see.
+            if is_hidden && !tray_enabled {
+                startup_trace("setup: no tray, showing window despite --hidden");
+                show_main_window(app.handle());
+            }
+
             // macOS: Run as background accessory app (no dock icon, stays in menu bar)
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -332,21 +332,9 @@ pub fn run() {
             // Global shortcut plugin moved to builder chain.
 
             // ---------------- AUTOSTART ----------------
-            // Only enable autostart if logic requires it, avoid aggressive re-enabling which might corrupt registry
-            {
-                let autostart_manager = app.autolaunch();
-                if let Ok(enabled) = autostart_manager.is_enabled() {
-                    if !enabled {
-                        log::info!("Autostart not enabled. Enabling...");
-                        match autostart_manager.enable() {
-                            Ok(_) => log::info!("Autostart enabled successfully."),
-                            Err(e) => log::error!("Failed to enable autostart: {}", e),
-                        }
-                    }
-                } else {
-                    log::error!("Failed to check autostart status");
-                }
-            }
+            // Registers the startup entry and, crucially, repairs one that has
+            // gone stale — see the `autostart` module docs.
+            autostart::sync(app.handle());
 
             startup_trace("setup: completed");
             Ok(())
@@ -484,7 +472,7 @@ fn configure_linux_webkit() {
 #[cfg(not(target_os = "linux"))]
 fn configure_linux_webkit() {}
 
-fn startup_trace(message: &str) {
+pub(crate) fn startup_trace(message: &str) {
     let dir = std::env::temp_dir().join("ortu");
     let path = dir.join("startup.log");
     let _ = fs::create_dir_all(&dir);

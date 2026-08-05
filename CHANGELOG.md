@@ -5,6 +5,24 @@ All notable changes to Ortu are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **"Could not connect to localhost: Connection refused" after login** — the
+  launch-at-login entry was written once and never revisited, so an entry left
+  by a `tauri dev` run, an earlier install, or an AppImage that has since been
+  moved or upgraded kept being used at login. A dev binary has the Vite
+  dev-server URL compiled in, so nothing is listening that early and the window
+  came up on WebKit's error page. Ortu now re-points a stale entry at the
+  current executable on every release launch, and debug builds no longer
+  register themselves at all. (#20)
+
+### Changed
+- **Launching at login opens to the tray** — the startup entry now passes
+  `--hidden`, which Ortu already understood but was never given, so a login
+  launch no longer raises the main window. If the tray is unavailable the window
+  is shown anyway, so there is always a way into the app.
+
 ## [2.0.2] - 2026-07-10
 
 Bug-fix release.
