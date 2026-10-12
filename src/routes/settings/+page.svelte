@@ -36,6 +36,22 @@
     } catch { showToast("Failed to save setting", "error"); }
   }
 
+  // ── Privacy: skip clips apps mark as confidential (macOS) ──
+  // Unset counts as on, matching the backend default.
+  let skipConcealed = $state(true);
+  async function loadSkipConcealed() {
+    try {
+      const v = (await invoke("get_setting", { key: "skip_concealed_clips" })) as string | null;
+      skipConcealed = v !== "0";
+    } catch { /* default on */ }
+  }
+  async function toggleSkipConcealed() {
+    skipConcealed = !skipConcealed;
+    try {
+      await invoke("set_setting", { key: "skip_concealed_clips", value: skipConcealed ? "1" : "0" });
+    } catch { showToast("Failed to save setting", "error"); }
+  }
+
   // ── History retention ──────────────────────────────────
   // retentionMode: "reboot" (default — clear ungrouped & unpinned on every OS
   // reboot) | "0" (forever) | "7" | "30" | "90" (clear older than N days).
@@ -112,7 +128,7 @@
     currentTheme = getStoredTheme();
     (async () => {
       try { currentPlatform = await platform(); } catch { /* keep default */ }
-      await Promise.all([loadAutoMask(), loadRetention(), loadShortcuts()]);
+      await Promise.all([loadAutoMask(), loadSkipConcealed(), loadRetention(), loadShortcuts()]);
     })();
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
@@ -173,6 +189,23 @@
             <span class="absolute top-[2px] left-[2px] h-[18px] w-[18px] rounded-full bg-white shadow transition-transform {autoMaskSecrets ? 'translate-x-[16px]' : ''}"></span>
           </button>
         </div>
+        {#if currentPlatform === "macos"}
+          <div class="flex items-start justify-between gap-4 p-3.5 bg-surface rounded-xl border border-overlay/[0.08]">
+            <div class="min-w-0">
+              <div class="text-[13px] font-medium text-fg/80">Skip content marked confidential</div>
+              <p class="text-[11px] text-fg/45 mt-0.5 leading-relaxed">Don't record copies that the source app marks as confidential or temporary, e.g. passwords from 1Password, Bitwarden or KeePassXC.</p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={skipConcealed}
+              aria-label="Toggle skip confidential content"
+              onclick={toggleSkipConcealed}
+              class="relative shrink-0 mt-0.5 h-[22px] w-[38px] rounded-full transition-colors {skipConcealed ? 'bg-[#FF8A3D]' : 'bg-overlay/[0.18]'}"
+            >
+              <span class="absolute top-[2px] left-[2px] h-[18px] w-[18px] rounded-full bg-white shadow transition-transform {skipConcealed ? 'translate-x-[16px]' : ''}"></span>
+            </button>
+          </div>
+        {/if}
       </section>
 
       <!-- History -->
