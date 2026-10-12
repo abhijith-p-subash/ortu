@@ -10,6 +10,7 @@ SQLite database — there are no external config files to edit by hand.
 |--------------|----------------|--------|---------|
 | Theme | _(stored client-side)_ | `system` \| `light` \| `dark` | `dark` |
 | Auto-mask detected secrets | `auto_mask_secrets` | `0` \| `1` | `0` (off) |
+| Skip content marked confidential (macOS) | `skip_concealed_clips` | `0` \| `1` | unset = on |
 | Pause capture (header pill) | `capture_paused` | `0` \| `1` | `0` (capturing) |
 | Keep history for | `retention_days` | `reboot` \| `0` \| `7` \| `30` \| `90` | `reboot` |
 | Max items | `retention_max_items` | `0` (unlimited) \| `500` \| `1000` \| `5000` | `0` |
@@ -42,6 +43,10 @@ the stored value at launch, a reboot happened and the wipe runs once.
   classifier flags as secrets are masked in the UI and **encrypted at rest**.
   You can reveal them on demand. See
   [PRIVACY_AND_SECURITY.md](PRIVACY_AND_SECURITY.md).
+- **Skip content marked confidential** (`skip_concealed_clips`, macOS): copies
+  the source app marks as confidential or temporary (nspasteboard.org
+  conventions, used by most password managers) are never read or stored. On
+  unless set to `0`.
 
 ## Global shortcuts
 
