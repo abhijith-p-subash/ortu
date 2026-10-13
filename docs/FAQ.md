@@ -11,7 +11,10 @@ In a SQLite database under the OS app-data directory for `com.ortu.clipboard`.
 See [CONFIGURATION.md](CONFIGURATION.md#storage-locations).
 
 **Does Ortu capture passwords?**
-It captures whatever is copied. If you enable *Auto-mask detected secrets*,
+On macOS, not when the password manager marks the copy as confidential —
+1Password, Bitwarden, KeePassXC, Strongbox and Enpass do, and Ortu skips those
+by default (Settings → Privacy → *Skip content marked confidential*).
+Otherwise it captures whatever is copied. If you enable *Auto-mask detected secrets*,
 likely secrets are masked and encrypted at rest. You can also click the header
 status pill to **pause capture** entirely while handling sensitive data. See
 [PRIVACY_AND_SECURITY.md](PRIVACY_AND_SECURITY.md).

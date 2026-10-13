@@ -5,6 +5,17 @@ All notable changes to Ortu are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Copies marked confidential are skipped (macOS)** — password managers such
+  as 1Password, Bitwarden, KeePassXC, Strongbox and Enpass flag copied passwords
+  as confidential using the [nspasteboard.org](https://nspasteboard.org)
+  conventions. Ortu now honours those markers (concealed, transient and
+  auto-generated, plus legacy ones like 1Password 7's) and never reads or
+  stores such copies. On by default; turn it off under Settings → Privacy →
+  **Skip content marked confidential**.
+
 ## [2.1.0] - 2026-08-05
 
 Update delivery is reworked, and two long-standing platform bugs are fixed.

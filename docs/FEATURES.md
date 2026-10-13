@@ -63,6 +63,8 @@ See [SHORTCUTS.md](SHORTCUTS.md) for the exact keys.
   SSH keys, JWTs, env vars, etc.).
 - **Auto-mask.** When enabled, detected secrets are masked in the UI and
   **encrypted at rest** with AES‑256‑GCM. Reveal them on demand.
+- **Skip confidential copies (macOS).** Copies that password managers mark as
+  confidential or temporary are never recorded. On by default.
 - **Local-only.** Nothing is uploaded; there is no telemetry.
 
 Details: [PRIVACY_AND_SECURITY.md](PRIVACY_AND_SECURITY.md).
